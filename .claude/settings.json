@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build *)",
+      "Bash(go vet *)",
+      "Bash(unzip -l engine/bin/idb-engine.jar)",
+      "Bash(javap -cp engine/bin/idb-engine.jar -p com.kxxnzstdsw.models.Category com.kxxnzstdsw.models.Action com.kxxnzstdsw.models.Driver)",
+      "Bash(javap -cp engine/bin/idb-engine.jar -p com.kxxnzstdsw.models.Request com.kxxnzstdsw.models.Response com.kxxnzstdsw.models.ConnectionConfig)",
+      "Bash(javap -cp engine/bin/idb-engine.jar -p com.kxxnzstdsw.MainKt)",
+      "Bash(engine/jre/bin/java.exe -Xms32m -Xmx64m -XX:+UseSerialGC -jar engine/bin/idb-engine.jar)",
+      "Bash(npm run *)",
+      "Bash(javap -cp engine/bin/idb-engine.jar -p com.kxxnzstdsw.handlers.SchemaHandler)",
+      "Bash(javap -cp engine/bin/idb-engine.jar -p com.kxxnzstdsw.handlers.TableHandler)",
+      "Bash(javap -cp engine/bin/idb-engine.jar -p com.kxxnzstdsw.handlers.DataHandler)",
+      "Bash(javap -cp engine/bin/idb-engine.jar -p com.kxxnzstdsw.dispatcher.RequestDispatcher)",
+      "Bash(javap -cp d:/project/idb_desktop/engine/bin/idb-engine.jar -c -p com.kxxnzstdsw.handlers.TableHandler)",
+      "Bash(javap -cp d:/project/idb_desktop/engine/bin/idb-engine.jar -c -p com.kxxnzstdsw.handlers.DataHandler)"
+    ]
+  }
+}
