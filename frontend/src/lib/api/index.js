@@ -34,11 +34,20 @@ import { FetchDatabaseData } from '../../../wailsjs/go/main/App.js';
  * @property {unknown} data
  */
 
+/**
+ * @typedef {Object} ColumnMeta
+ * @property {string} name
+ * @property {string} type
+ * @property {number} [size]
+ * @property {boolean} [nullable]
+ * @property {boolean} [isPrimaryKey]
+ * @property {unknown} [defaultValue]
+ */
+
 function uuid() {
 	if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
 		return crypto.randomUUID();
 	}
-	// Wails Webview2 / WKWebView 均原生支持 crypto.randomUUID，这里仅作降级。
 	return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
 		const r = (Math.random() * 16) | 0;
 		const v = c === 'x' ? r : (r & 0x3) | 0x8;
@@ -47,9 +56,7 @@ function uuid() {
 }
 
 /**
- * 调用引擎并把响应反序列化为对象。
- * 任何失败（管道异常、引擎业务失败）都以 Response.success=false 抛出语义错误。
- *
+ * 调用引擎并把响应反序列化为对象。失败仍以 Response 形态返回，调用方根据 success 判断。
  * @param {Category} category
  * @param {Action} action
  * @param {ConnectionConfig} connection
@@ -58,14 +65,7 @@ function uuid() {
  */
 export async function invoke(category, action, connection, payload = {}) {
 	/** @type {Request} */
-	const req = {
-		id: uuid(),
-		category,
-		action,
-		connection,
-		payload
-	};
-
+	const req = { id: uuid(), category, action, connection, payload };
 	const raw = await FetchDatabaseData(JSON.stringify(req));
 	try {
 		return JSON.parse(raw);
@@ -79,48 +79,82 @@ export async function invoke(category, action, connection, payload = {}) {
 	}
 }
 
-/**
- * 列出连接可见的所有 schema/database。
- * @param {ConnectionConfig} connection
- */
-export function listSchemas(connection) {
-	return invoke('SCHEMA', 'LIST', connection);
-}
+// -------- SCHEMA --------
+
+/** @param {ConnectionConfig} connection */
+export const listSchemas = (connection) => invoke('SCHEMA', 'LIST', connection);
+
+/** @param {ConnectionConfig} connection @param {string} name */
+export const createSchema = (connection, name) => invoke('SCHEMA', 'CREATE', connection, { name });
+
+/** @param {ConnectionConfig} connection @param {string} name */
+export const deleteSchema = (connection, name) => invoke('SCHEMA', 'DELETE', connection, { name });
+
+// -------- USER --------
+
+/** @param {ConnectionConfig} connection */
+export const listUsers = (connection) => invoke('USER', 'LIST', connection);
 
 /**
- * 列出 connection.database 下的表。
- * 切换库时调用方负责覆盖 connection.database，不要单独传 schema 字段。
+ * 授予 / 回收权限。schema 取目标 database 名；privileges 例如 ['SELECT','INSERT']。
  * @param {ConnectionConfig} connection
+ * @param {{ user: string; schema: string; privileges: string[]; isGrant: boolean }} payload
  */
-export function listTables(connection) {
-	return invoke('TABLE', 'LIST', connection);
-}
+export const updateUserPrivileges = (connection, payload) =>
+	invoke('USER', 'UPDATE', connection, /** @type {Record<string, unknown>} */ (payload));
+
+// -------- TABLE --------
+
+/** @param {ConnectionConfig} connection */
+export const listTables = (connection) => invoke('TABLE', 'LIST', connection);
 
 /**
- * 拉取列元数据：name / type / size / nullable / isPrimaryKey / defaultValue
+ * 取列元数据：name / type / size / nullable / isPrimaryKey / defaultValue。
+ * 协议：TABLE/LIST 在 payload 携带 tableName 时自动路由到列元数据查询。
  * @param {ConnectionConfig} connection
  * @param {string} tableName
  */
-export function listColumns(connection, tableName) {
-	return invoke('TABLE', 'EXECUTE', connection, { tableName });
-}
+export const listColumns = (connection, tableName) =>
+	invoke('TABLE', 'LIST', connection, { tableName });
+
+// -------- DATA --------
 
 /**
- * 分页拉取表数据。page 从 1 开始；pageSize 上限受 §9 约束（≤1000）。
+ * 分页拉取。page 从 1 开始；pageSize 上限 1000（CLAUDE.md §9）。
  * @param {ConnectionConfig} connection
  * @param {string} tableName
  * @param {number} [page]
  * @param {number} [pageSize]
  */
-export function listData(connection, tableName, page = 1, pageSize = 100) {
-	return invoke('DATA', 'LIST', connection, { tableName, page, pageSize });
-}
+export const listData = (connection, tableName, page = 1, pageSize = 100) =>
+	invoke('DATA', 'LIST', connection, { tableName, page, pageSize });
 
 /**
- * 执行原生 SQL。
  * @param {ConnectionConfig} connection
- * @param {string} sql
+ * @param {string} tableName
+ * @param {Record<string, unknown>} values
  */
-export function executeSql(connection, sql) {
-	return invoke('SQL', 'EXECUTE', connection, { sql });
-}
+export const createRow = (connection, tableName, values) =>
+	invoke('DATA', 'CREATE', connection, { tableName, values });
+
+/**
+ * @param {ConnectionConfig} connection
+ * @param {string} tableName
+ * @param {Record<string, unknown>} changes
+ * @param {Record<string, unknown>} where
+ */
+export const updateRow = (connection, tableName, changes, where) =>
+	invoke('DATA', 'UPDATE', connection, { tableName, changes, where });
+
+/**
+ * @param {ConnectionConfig} connection
+ * @param {string} tableName
+ * @param {Record<string, unknown>} where
+ */
+export const deleteRow = (connection, tableName, where) =>
+	invoke('DATA', 'DELETE', connection, { tableName, where });
+
+// -------- SQL --------
+
+/** @param {ConnectionConfig} connection @param {string} sql */
+export const executeSql = (connection, sql) => invoke('SQL', 'EXECUTE', connection, { sql });

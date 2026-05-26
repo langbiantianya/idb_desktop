@@ -133,17 +133,18 @@ idb_desktop/
 
 | Category | Action | payload | 说明 |
 |---|---|---|---|
-| SCHEMA | LIST | `{}` | 列出该连接可见的所有 database / schema |
+| SCHEMA | LIST | `{}` | 列出该连接可见的所有 database / schema，返回 `string[]` |
 | SCHEMA | CREATE | `{ name }` | 创建库（按驱动方言） |
 | SCHEMA | DELETE | `{ name }` | 删库 |
+| USER | LIST | `{}` | 用户列表，MySQL 形如 `[{user, host}]`，PostgreSQL `[{user}]` |
+| USER | UPDATE | `{ user, schema, privileges, isGrant }` | `isGrant=true` 授权、`false` 回收 |
 | TABLE | LIST | `{}` | 列出 `connection.database` 内的表，返回 `[{name, type}]` |
-| TABLE | EXECUTE | `{ tableName }` | 取列元数据，返回 `[{name, type, size, nullable, isPrimaryKey, defaultValue}]` |
+| TABLE | LIST | `{ tableName }` | **payload 含 tableName 时自动路由**为列元数据，返回 `[{name, type, size, nullable, isPrimaryKey, defaultValue}]` |
 | DATA | LIST | `{ tableName, page, pageSize }` | **page 从 1 开始**；LOB / 长文本字段引擎自动截断为 `[LOB Data]` |
 | DATA | CREATE | `{ tableName, values: { col: val, ... } }` | 单行插入；返回 `{ affectedRows }` |
 | DATA | UPDATE | `{ tableName, changes: {...}, where: {...} }` | 多列条件更新；返回 `{ affectedRows }` |
 | DATA | DELETE | `{ tableName, where: {...} }` | 条件删除；返回 `{ affectedRows }` |
-| SQL | EXECUTE | `{ sql }` | 原生 SQL；引擎仍负责防注入边界（参数化由调用方按需通过 `?` + 后续扩展实现） |
-| USER | LIST / UPDATE | （按方言） | 用户与授权管理（详见 §5.4 方言矩阵） |
+| SQL | EXECUTE | `{ sql }` | 原生 SQL；查询返回结果集数组，DML/DDL 返回 `{ affectedRows }` |
 
 > 退出信号：向 stdin 写一行 `CMD_EXIT`（或关闭 stdin），引擎即自清理退出。所有日志写 stderr，绝不污染 stdout 协议流。
 
