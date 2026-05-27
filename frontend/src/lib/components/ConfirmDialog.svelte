@@ -29,18 +29,13 @@
 </script>
 
 <Modal {open} {title} size="sm" onClose={onCancel}>
-	<p class="leading-relaxed whitespace-pre-line text-slate-700">{message}</p>
+	<p class="leading-relaxed whitespace-pre-line" style="color: var(--md-on-surface-variant);">{message}</p>
 	{#snippet footer()}
-		<button
-			class="rounded-md border border-slate-300 px-4 py-1.5 text-sm hover:bg-slate-50"
-			onclick={onCancel}
-			disabled={pending}
-		>
+		<button class="md-btn-text" onclick={onCancel} disabled={pending}>
 			{cancelText}
 		</button>
 		<button
-			class="rounded-md px-4 py-1.5 text-sm text-white shadow-sm disabled:opacity-60
-				{danger ? 'bg-rose-600 hover:bg-rose-700' : 'bg-slate-900 hover:bg-slate-700'}"
+			class={danger ? 'md-btn-danger' : 'md-btn-filled'}
 			onclick={onConfirm}
 			disabled={pending}
 		>

@@ -2,11 +2,12 @@
 	import { listSchemas } from '$lib/api';
 	import { defaultConnection } from '$lib/stores/appState.js';
 	import { err } from '$lib/stores/toasts.js';
+	import ThemeToggle from './ThemeToggle.svelte';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
 	 * @typedef {Object} Props
-	 * @property {(conn: ConnectionConfig) => void} onConnected   连接成功后回调，父组件登记 baseConn
+	 * @property {(conn: ConnectionConfig) => void} onConnected
 	 */
 
 	/** @type {Props} */
@@ -36,72 +37,78 @@
 	}
 </script>
 
-<form
-	class="grid grid-cols-2 gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-	onsubmit={submit}
+<div
+	class="flex min-h-screen items-center justify-center p-6"
+	style="background: var(--md-background);"
 >
-	<label class="flex flex-col gap-1 text-sm">
-		<span class="text-slate-600">驱动</span>
-		<select
-			class="rounded-md border border-slate-300 px-3 py-2"
-			bind:value={conn.driver}
-			onchange={adjustDefaultPort}
+	<div class="w-full max-w-lg">
+		<div class="mb-6 flex items-center justify-between">
+			<div>
+				<h1 class="text-2xl font-semibold tracking-tight" style="color: var(--md-on-background);">
+					idb · 数据库管理
+				</h1>
+				<p class="mt-1 text-sm" style="color: var(--md-on-surface-variant);">
+					本地化 · 零端口 · MySQL / PostgreSQL
+				</p>
+			</div>
+			<ThemeToggle />
+		</div>
+
+		<form
+			class="grid grid-cols-2 gap-4 p-6"
+			style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant); border-radius: var(--md-radius-lg); box-shadow: var(--md-elev-1);"
+			onsubmit={submit}
 		>
-			<option value="mysql">MySQL</option>
-			<option value="postgresql">PostgreSQL</option>
-		</select>
-	</label>
-	<label class="flex flex-col gap-1 text-sm">
-		<span class="text-slate-600">主机</span>
-		<input
-			class="rounded-md border border-slate-300 px-3 py-2"
-			type="text"
-			bind:value={conn.host}
-			required
-		/>
-	</label>
-	<label class="flex flex-col gap-1 text-sm">
-		<span class="text-slate-600">端口</span>
-		<input
-			class="rounded-md border border-slate-300 px-3 py-2"
-			type="number"
-			bind:value={conn.port}
-			min="1"
-			max="65535"
-			required
-		/>
-	</label>
-	<label class="flex flex-col gap-1 text-sm">
-		<span class="text-slate-600">用户名</span>
-		<input
-			class="rounded-md border border-slate-300 px-3 py-2"
-			type="text"
-			bind:value={conn.user}
-			required
-		/>
-	</label>
-	<label class="col-span-2 flex flex-col gap-1 text-sm">
-		<span class="text-slate-600">密码</span>
-		<input
-			class="rounded-md border border-slate-300 px-3 py-2"
-			type="password"
-			bind:value={conn.password}
-			autocomplete="off"
-		/>
-	</label>
-	<label class="col-span-2 flex flex-col gap-1 text-sm">
-		<span class="text-slate-600">默认 database（可选，连接后再选 schema）</span>
-		<input
-			class="rounded-md border border-slate-300 px-3 py-2"
-			type="text"
-			bind:value={conn.database}
-		/>
-	</label>
-	<button
-		type="submit"
-		class="col-span-2 rounded-full bg-slate-900 py-2 text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-		disabled={pending}
-	>
-		{pending ? '请求中…' : '连接并加载 schema'}
-	</button>
-</form>
+			<label class="flex flex-col gap-1 text-sm">
+				<span style="color: var(--md-on-surface-variant);">驱动</span>
+				<select
+					class="md-input"
+					bind:value={conn.driver}
+					onchange={adjustDefaultPort}
+				>
+					<option value="mysql">MySQL</option>
+					<option value="postgresql">PostgreSQL</option>
+				</select>
+			</label>
+			<label class="flex flex-col gap-1 text-sm">
+				<span style="color: var(--md-on-surface-variant);">主机</span>
+				<input class="md-input" type="text" bind:value={conn.host} required />
+			</label>
+			<label class="flex flex-col gap-1 text-sm">
+				<span style="color: var(--md-on-surface-variant);">端口</span>
+				<input
+					class="md-input"
+					type="number"
+					bind:value={conn.port}
+					min="1"
+					max="65535"
+					required
+				/>
+			</label>
+			<label class="flex flex-col gap-1 text-sm">
+				<span style="color: var(--md-on-surface-variant);">用户名</span>
+				<input class="md-input" type="text" bind:value={conn.user} required />
+			</label>
+			<label class="col-span-2 flex flex-col gap-1 text-sm">
+				<span style="color: var(--md-on-surface-variant);">密码</span>
+				<input
+					class="md-input"
+					type="password"
+					bind:value={conn.password}
+					autocomplete="off"
+				/>
+			</label>
+			<label class="col-span-2 flex flex-col gap-1 text-sm">
+				<span style="color: var(--md-on-surface-variant);">默认 database（可选）</span>
+				<input class="md-input" type="text" bind:value={conn.database} />
+			</label>
+			<button
+				type="submit"
+				class="md-btn-filled col-span-2 mt-2"
+				disabled={pending}
+			>
+				{pending ? '请求中…' : '连接并加载 schema'}
+			</button>
+		</form>
+	</div>
+</div>

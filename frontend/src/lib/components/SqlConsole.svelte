@@ -45,7 +45,6 @@
 	}
 
 	function onKeyDown(e) {
-		// Ctrl/Cmd + Enter 执行
 		if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
 			e.preventDefault();
 			run();
@@ -53,71 +52,87 @@
 	}
 </script>
 
-<section class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-	<header class="flex items-center justify-between text-sm">
-		<h2 class="font-medium text-slate-700">SQL 控制台</h2>
-		<div class="flex items-center gap-2 text-xs text-slate-400">
-			<span>{schemaConn.driver}://{schemaConn.host}:{schemaConn.port}/{schemaConn.database || '(未选库)'}</span>
+<section class="flex h-full flex-col gap-3">
+	<header
+		class="flex items-center justify-between px-3 py-2"
+		style="background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant);"
+	>
+		<h2 class="text-sm font-medium" style="color: var(--md-on-surface);">SQL 控制台</h2>
+		<div class="flex items-center gap-2 text-xs font-mono" style="color: var(--md-on-surface-variant);">
+			{schemaConn.driver}://{schemaConn.host}:{schemaConn.port}/{schemaConn.database || '(未选库)'}
 		</div>
 	</header>
 
-	<textarea
-		class="h-40 w-full resize-y rounded-md border border-slate-300 bg-slate-50 p-3 font-mono text-sm leading-relaxed focus:bg-white"
-		bind:value={sql}
-		onkeydown={onKeyDown}
-		placeholder="SELECT id, name FROM users LIMIT 10;&#10;&#10;Ctrl/Cmd + Enter 执行"
-	></textarea>
+	<div class="flex flex-col gap-3 px-3 pb-3">
+		<textarea
+			class="md-input h-40 w-full resize-y font-mono text-sm leading-relaxed"
+			bind:value={sql}
+			onkeydown={onKeyDown}
+			placeholder={"SELECT id, name FROM users LIMIT 10;\n\nCtrl/Cmd + Enter 执行"}
+		></textarea>
 
-	<div class="flex items-center justify-between text-xs">
-		<span class="text-slate-400">
-			{#if lastSql}
-				上次执行：<code class="font-mono">{lastSql.length > 80 ? lastSql.slice(0, 80) + '…' : lastSql}</code>
-			{/if}
-		</span>
-		<button
-			class="rounded-full bg-slate-900 px-4 py-1.5 text-sm text-white shadow-sm hover:bg-slate-700 disabled:opacity-60"
-			onclick={run}
-			disabled={pending || !sql.trim()}
-		>
-			{pending ? '执行中…' : '执行 (Ctrl+Enter)'}
-		</button>
-	</div>
-
-	{#if affected !== null && rows.length === 0}
-		<div class="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-			受影响行数：{affected}
+		<div class="flex items-center justify-between text-xs">
+			<span style="color: var(--md-on-surface-variant);">
+				{#if lastSql}
+					上次执行：<code class="font-mono">{lastSql.length > 80 ? lastSql.slice(0, 80) + '…' : lastSql}</code>
+				{/if}
+			</span>
+			<button class="md-btn-filled" onclick={run} disabled={pending || !sql.trim()}>
+				{pending ? '执行中…' : '执行 (Ctrl+Enter)'}
+			</button>
 		</div>
-	{:else if rows.length > 0 && columns.length > 0}
-		<div class="max-h-[50vh] overflow-auto rounded-md border border-slate-200">
-			<table class="min-w-full text-left text-xs">
-				<thead class="sticky top-0 bg-slate-100 text-slate-600">
-					<tr>
-						{#each columns as col (col)}
-							<th class="border-b border-slate-200 px-3 py-2 font-medium whitespace-nowrap">
-								{col}
-							</th>
-						{/each}
-					</tr>
-				</thead>
-				<tbody>
-					{#each rows as row, i (i)}
-						<tr class="even:bg-slate-50">
+
+		{#if affected !== null && rows.length === 0}
+			<div
+				class="px-4 py-3 text-sm"
+				style="background: var(--md-success-container); color: var(--md-on-success-container); border-radius: var(--md-radius-sm);"
+			>
+				受影响行数：{affected}
+			</div>
+		{:else if rows.length > 0 && columns.length > 0}
+			<div
+				class="max-h-[50vh] overflow-auto"
+				style="border: 1px solid var(--md-outline-variant); border-radius: var(--md-radius-md);"
+			>
+				<table class="min-w-full text-left text-xs">
+					<thead
+						class="sticky top-0"
+						style="background: var(--md-surface-container); color: var(--md-on-surface-variant);"
+					>
+						<tr>
 							{#each columns as col (col)}
-								<td class="max-w-[24rem] truncate border-b border-slate-100 px-3 py-1.5">
-									{#if isLob(row[col])}
-										<span class="text-slate-400 italic">{row[col]}</span>
-									{:else}
-										{renderCell(row[col])}
-									{/if}
-								</td>
+								<th
+									class="px-3 py-2 font-medium font-mono whitespace-nowrap"
+									style="border-bottom: 1px solid var(--md-outline-variant);"
+								>
+									{col}
+								</th>
 							{/each}
 						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
-		<p class="text-right text-xs text-slate-400">{rows.length} 行结果</p>
-	{:else if lastSql && !pending}
-		<p class="py-6 text-center text-sm text-slate-400">无结果</p>
-	{/if}
+					</thead>
+					<tbody>
+						{#each rows as row, i (i)}
+							<tr style:background={i % 2 === 0 ? 'transparent' : 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}>
+								{#each columns as col (col)}
+									<td
+										class="max-w-[24rem] truncate px-3 py-1.5 font-mono"
+										style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);"
+									>
+										{#if isLob(row[col])}
+											<span class="italic" style="color: var(--md-on-surface-variant);">{row[col]}</span>
+										{:else}
+											{renderCell(row[col])}
+										{/if}
+									</td>
+								{/each}
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+			<p class="text-right text-xs" style="color: var(--md-on-surface-variant);">{rows.length} 行结果</p>
+		{:else if lastSql && !pending}
+			<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">无结果</p>
+		{/if}
+	</div>
 </section>

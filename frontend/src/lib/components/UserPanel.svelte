@@ -95,43 +95,40 @@
 	}
 </script>
 
-<section class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-	<header class="flex items-center justify-between text-sm">
-		<h2 class="font-medium text-slate-700">
-			users
-			<span class="ml-2 text-xs text-slate-400">{users.length}</span>
-			{#if pending}<span class="ml-2 animate-pulse text-xs text-slate-400">…</span>{/if}
+<section class="flex h-full flex-col gap-3">
+	<header
+		class="flex items-center justify-between px-3 py-2"
+		style="background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant);"
+	>
+		<h2 class="text-sm font-medium" style="color: var(--md-on-surface);">
+			用户与权限
+			<span class="ml-2 text-xs" style="color: var(--md-on-surface-variant);">{users.length}</span>
+			{#if pending}
+				<span class="ml-2 animate-pulse text-xs" style="color: var(--md-on-surface-variant);">…</span>
+			{/if}
 		</h2>
-		<button
-			class="rounded-md border border-slate-200 px-3 py-1 text-xs hover:bg-slate-50"
-			onclick={refresh}
-			disabled={pending}
-		>
-			刷新
-		</button>
+		<button class="md-icon-btn" title="刷新" onclick={refresh} disabled={pending}>↻</button>
 	</header>
 
-	{#if users.length === 0 && !pending}
-		<p class="py-6 text-center text-sm text-slate-400">暂无用户</p>
-	{:else}
-		<ul class="grid grid-cols-2 gap-2">
-			{#each users as u, i (`${u.user}@${u.host ?? '*'}-${i}`)}
-				<li
-					class="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
-				>
-					<span class="truncate font-mono">
-						{u.user}{u.host ? `@${u.host}` : ''}
-					</span>
-					<button
-						class="text-xs text-slate-500 hover:text-slate-900"
-						onclick={() => openEditor(u)}
+	<div class="flex-1 overflow-auto px-3 pb-3">
+		{#if users.length === 0 && !pending}
+			<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">暂无用户</p>
+		{:else}
+			<ul class="grid grid-cols-2 gap-2">
+				{#each users as u, i (`${u.user}@${u.host ?? '*'}-${i}`)}
+					<li
+						class="flex items-center justify-between gap-2 px-3 py-2 text-sm"
+						style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant); border-radius: var(--md-radius-sm);"
 					>
-						授权 / 回收
-					</button>
-				</li>
-			{/each}
-		</ul>
-	{/if}
+						<span class="truncate font-mono" style="color: var(--md-on-surface);">
+							{u.user}{u.host ? `@${u.host}` : ''}
+						</span>
+						<button class="md-btn-text" onclick={() => openEditor(u)}>授权 / 回收</button>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</div>
 </section>
 
 <Modal
@@ -142,11 +139,8 @@
 >
 	<div class="flex flex-col gap-4">
 		<label class="flex flex-col gap-1 text-sm">
-			<span class="text-slate-600">目标 schema</span>
-			<select
-				class="rounded-md border border-slate-300 px-3 py-2"
-				bind:value={formSchema}
-			>
+			<span style="color: var(--md-on-surface-variant);">目标 schema</span>
+			<select class="md-input" bind:value={formSchema}>
 				{#if schemaOptions.length === 0}
 					<option value="">（暂无 schema 选项）</option>
 				{/if}
@@ -158,19 +152,19 @@
 
 		<div class="flex gap-2 text-sm">
 			<button
-				class="flex-1 rounded-md border px-3 py-1.5
-					{formIsGrant
-					? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-					: 'border-slate-200 text-slate-500 hover:bg-slate-50'}"
+				class="flex-1 px-3 py-1.5"
+				style:background={formIsGrant ? 'var(--md-success-container)' : 'transparent'}
+				style:color={formIsGrant ? 'var(--md-on-success-container)' : 'var(--md-on-surface-variant)'}
+				style="border: 1px solid {formIsGrant ? 'transparent' : 'var(--md-outline-variant)'}; border-radius: var(--md-radius-sm);"
 				onclick={() => (formIsGrant = true)}
 			>
 				授予 GRANT
 			</button>
 			<button
-				class="flex-1 rounded-md border px-3 py-1.5
-					{!formIsGrant
-					? 'border-rose-300 bg-rose-50 text-rose-700'
-					: 'border-slate-200 text-slate-500 hover:bg-slate-50'}"
+				class="flex-1 px-3 py-1.5"
+				style:background={!formIsGrant ? 'var(--md-error-container)' : 'transparent'}
+				style:color={!formIsGrant ? 'var(--md-on-error-container)' : 'var(--md-on-surface-variant)'}
+				style="border: 1px solid {!formIsGrant ? 'transparent' : 'var(--md-outline-variant)'}; border-radius: var(--md-radius-sm);"
 				onclick={() => (formIsGrant = false)}
 			>
 				回收 REVOKE
@@ -178,14 +172,14 @@
 		</div>
 
 		<div class="flex flex-col gap-1 text-sm">
-			<span class="text-slate-600">权限</span>
+			<span style="color: var(--md-on-surface-variant);">权限</span>
 			<div class="grid grid-cols-4 gap-2">
 				{#each PRIVILEGES as p (p)}
 					<label
-						class="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs
-							{formPrivileges.has(p)
-							? 'border-slate-900 bg-slate-50 text-slate-900'
-							: 'border-slate-200 text-slate-500 hover:bg-slate-50'}"
+						class="flex items-center gap-2 px-2 py-1.5 text-xs"
+						style:background={formPrivileges.has(p) ? 'var(--md-secondary-container)' : 'transparent'}
+						style:color={formPrivileges.has(p) ? 'var(--md-on-secondary-container)' : 'var(--md-on-surface-variant)'}
+						style="border: 1px solid {formPrivileges.has(p) ? 'transparent' : 'var(--md-outline-variant)'}; border-radius: var(--md-radius-sm); cursor: pointer;"
 					>
 						<input
 							type="checkbox"
@@ -200,16 +194,11 @@
 	</div>
 
 	{#snippet footer()}
-		<button
-			class="rounded-md border border-slate-300 px-4 py-1.5 text-sm hover:bg-slate-50"
-			onclick={() => (editing = null)}
-			disabled={formPending}
-		>
+		<button class="md-btn-text" onclick={() => (editing = null)} disabled={formPending}>
 			取消
 		</button>
 		<button
-			class="rounded-md px-4 py-1.5 text-sm text-white shadow-sm disabled:opacity-60
-				{formIsGrant ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-rose-600 hover:bg-rose-700'}"
+			class={formIsGrant ? 'md-btn-filled' : 'md-btn-danger'}
 			onclick={submit}
 			disabled={formPending || formPrivileges.size === 0 || !formSchema}
 		>

@@ -117,6 +117,60 @@ export const listTables = (connection) => invoke('TABLE', 'LIST', connection);
 export const listColumns = (connection, tableName) =>
 	invoke('TABLE', 'LIST', connection, { tableName });
 
+/**
+ * @typedef {Object} ColumnDef
+ * @property {string} name
+ * @property {string} type
+ * @property {number} [size]
+ * @property {boolean} [nullable]
+ * @property {boolean} [isPrimaryKey]
+ * @property {string} [defaultValue]
+ */
+
+/**
+ * 创建表。
+ * @param {ConnectionConfig} connection
+ * @param {string} tableName
+ * @param {ColumnDef[]} columns
+ */
+export const createTable = (connection, tableName, columns) =>
+	invoke('TABLE', 'CREATE', connection, { tableName, columns });
+
+/**
+ * 添加列。
+ * @param {ConnectionConfig} connection
+ * @param {string} tableName
+ * @param {ColumnDef} column
+ */
+export const addTableColumn = (connection, tableName, column) =>
+	invoke('TABLE', 'UPDATE', connection, { tableName, operation: 'ADD_COLUMN', column });
+
+/**
+ * 修改列类型 / 长度 / 可空。
+ * @param {ConnectionConfig} connection
+ * @param {string} tableName
+ * @param {ColumnDef} column
+ */
+export const modifyTableColumn = (connection, tableName, column) =>
+	invoke('TABLE', 'UPDATE', connection, { tableName, operation: 'MODIFY_COLUMN', column });
+
+/**
+ * 删除列。
+ * @param {ConnectionConfig} connection
+ * @param {string} tableName
+ * @param {string} columnName
+ */
+export const dropTableColumn = (connection, tableName, columnName) =>
+	invoke('TABLE', 'UPDATE', connection, { tableName, operation: 'DROP_COLUMN', columnName });
+
+/**
+ * 删除表。
+ * @param {ConnectionConfig} connection
+ * @param {string} tableName
+ */
+export const deleteTable = (connection, tableName) =>
+	invoke('TABLE', 'DELETE', connection, { tableName });
+
 // -------- DATA --------
 
 /**

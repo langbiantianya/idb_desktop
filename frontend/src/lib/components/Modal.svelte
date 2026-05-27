@@ -22,17 +22,21 @@
 <svelte:window onkeydown={open ? onKey : null} />
 
 {#if open}
-	<div class="fixed inset-0 z-40 flex items-start justify-center bg-slate-900/40 p-6">
+	<div
+		class="fixed inset-0 z-40 flex items-start justify-center p-6"
+		style="background: color-mix(in srgb, var(--md-scrim) 40%, transparent);"
+	>
 		<div
-			class="mt-16 flex w-full {widths[size] ?? widths.md} flex-col gap-4 rounded-2xl bg-white p-6 shadow-xl"
+			class="mt-16 flex w-full {widths[size] ?? widths.md} flex-col gap-4 p-6"
+			style="background: var(--md-surface-container-high); color: var(--md-on-surface); border-radius: var(--md-radius-lg); box-shadow: var(--md-elev-3);"
 			role="dialog"
 			aria-modal="true"
 		>
 			{#if title}
 				<header class="flex items-start justify-between">
-					<h2 class="text-base font-semibold text-slate-900">{title}</h2>
+					<h2 class="text-base font-semibold" style="color: var(--md-on-surface);">{title}</h2>
 					<button
-						class="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+						class="md-icon-btn"
 						onclick={onClose}
 						aria-label="关闭"
 					>
@@ -40,7 +44,7 @@
 					</button>
 				</header>
 			{/if}
-			<div class="text-sm text-slate-700">
+			<div class="text-sm" style="color: var(--md-on-surface);">
 				{@render children?.()}
 			</div>
 			{#if footer}

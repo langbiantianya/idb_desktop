@@ -136,10 +136,6 @@
 		}
 	}
 
-	/**
-	 * LOB 单行精准查询：按 where 条件再走一次原生 SQL，仅取该列。
-	 * 因 DATA/LIST 走了引擎层的 LOB 截断，这里用 SQL 路径取真实值。
-	 */
 	async function openLob(row, column) {
 		if (pkColumns.length === 0) {
 			err('该表无主键，无法做单行精准查询');
@@ -165,7 +161,6 @@
 	}
 
 	function quoteIdent(s) {
-		// MySQL/Postgres 通用：双引号在 MySQL ANSI_QUOTES 下也成立；为兼容默认 MySQL 配置，按驱动走反引号
 		const ch = schemaConn.driver === 'mysql' ? '`' : '"';
 		return ch + String(s).replaceAll(ch, ch + ch) + ch;
 	}
@@ -177,105 +172,139 @@
 	}
 </script>
 
-<section class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-	<header class="flex items-center justify-between text-sm">
-		<h2 class="font-medium">
-			<span class="text-slate-500">{schemaName}</span> ·
-			<span class="text-slate-900">{tableName}</span>
-			{#if pending}<span class="ml-2 animate-pulse text-xs text-slate-400">…</span>{/if}
+<section class="flex h-full flex-col gap-3">
+	<header
+		class="flex items-center justify-between px-3 py-2"
+		style="background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant);"
+	>
+		<h2 class="text-sm font-medium">
+			<span style="color: var(--md-on-surface-variant);">{schemaName}</span>
+			<span style="color: var(--md-on-surface-variant);"> · </span>
+			<span class="font-mono" style="color: var(--md-on-surface);">{tableName}</span>
+			{#if pending}
+				<span class="ml-2 animate-pulse text-xs" style="color: var(--md-on-surface-variant);">…</span>
+			{/if}
 		</h2>
-		<div class="flex items-center gap-2">
+		<div class="flex items-center gap-1.5">
 			<button
-				class="rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40"
+				class="md-btn-text"
 				onclick={() => gotoPage(page - 1)}
 				disabled={pending || page <= 1}
 			>
-				上一页
+				← 上一页
 			</button>
-			<span class="text-xs text-slate-500">第 {page} 页 · {PAGE_SIZE} 行/页</span>
+			<span class="text-xs" style="color: var(--md-on-surface-variant);">
+				第 {page} 页 · {PAGE_SIZE} 行
+			</span>
 			<button
-				class="rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40"
+				class="md-btn-text"
 				onclick={() => gotoPage(page + 1)}
 				disabled={pending || rows.length < PAGE_SIZE}
 			>
-				下一页
+				下一页 →
+			</button>
+			<button class="md-icon-btn" title="刷新" onclick={() => load()} disabled={pending}>
+				↻
 			</button>
 			<button
-				class="rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50"
-				onclick={() => load()}
-				disabled={pending}
-			>
-				刷新
-			</button>
-			<button
-				class="rounded-md bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-700"
+				class="md-btn-filled"
 				onclick={() => (inserting = true)}
 				disabled={columns.length === 0 && columnMeta.length === 0}
 			>
-				插入
+				+ 插入
 			</button>
 		</div>
 	</header>
 
-	{#if rows.length === 0 && !pending}
-		<p class="py-8 text-center text-sm text-slate-400">空表 / 当前页无数据</p>
-	{:else if columns.length > 0}
-		<div class="max-h-[60vh] overflow-auto rounded-md border border-slate-200">
-			<table class="min-w-full text-left text-xs">
-				<thead class="sticky top-0 bg-slate-100 text-slate-600">
-					<tr>
-						{#each columns as col (col)}
-							<th class="border-b border-slate-200 px-3 py-2 font-medium whitespace-nowrap">
-								{col}
-								{#if pkColumns.includes(col)}
-									<span class="ml-1 rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-700">
-										PK
-									</span>
-								{/if}
-							</th>
-						{/each}
-						<th class="sticky right-0 border-b border-slate-200 bg-slate-100 px-3 py-2 font-medium">
-							操作
-						</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each rows as row, i (i)}
-						<tr class="even:bg-slate-50">
+	<div class="flex-1 overflow-auto px-3 pb-3">
+		{#if rows.length === 0 && !pending}
+			<p class="py-8 text-center text-sm" style="color: var(--md-on-surface-variant);">
+				空表 / 当前页无数据
+			</p>
+		{:else if columns.length > 0}
+			<div
+				class="overflow-auto"
+				style="border: 1px solid var(--md-outline-variant); border-radius: var(--md-radius-md);"
+			>
+				<table class="min-w-full text-left text-xs">
+					<thead
+						class="sticky top-0"
+						style="background: var(--md-surface-container); color: var(--md-on-surface-variant);"
+					>
+						<tr>
 							{#each columns as col (col)}
-								<td class="max-w-[24rem] truncate border-b border-slate-100 px-3 py-1.5">
-									{#if isLob(row[col])}
-										<button
-											class="text-slate-500 italic underline decoration-dotted hover:text-slate-900"
-											onclick={() => openLob(row, col)}
-											title="点击查看完整内容"
-										>
-											{row[col]}
-										</button>
-									{:else}
-										{renderCell(row[col])}
+								<th
+									class="px-3 py-2 font-medium whitespace-nowrap font-mono"
+									style="border-bottom: 1px solid var(--md-outline-variant);"
+								>
+									{col}
+									{#if pkColumns.includes(col)}
+										<span class="md-chip-pk ml-1">PK</span>
 									{/if}
-								</td>
+								</th>
 							{/each}
-							<td class="sticky right-0 border-b border-slate-100 bg-white px-3 py-1.5 even:bg-slate-50">
-								<div class="flex gap-2 text-xs">
-									<button class="text-slate-500 hover:text-slate-900" onclick={() => (editing = row)}>
-										编辑
-									</button>
-									<button
-										class="text-slate-400 hover:text-rose-600"
-										onclick={() => (confirmDelete = row)}
-									>
-										删除
-									</button>
-								</div>
-							</td>
+							<th
+								class="sticky right-0 px-3 py-2 font-medium"
+								style="background: var(--md-surface-container); border-bottom: 1px solid var(--md-outline-variant);"
+							>
+								操作
+							</th>
 						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
-	{/if}
+					</thead>
+					<tbody>
+						{#each rows as row, i (i)}
+							<tr
+								class="row-hover"
+								style:background={i % 2 === 0 ? 'transparent' : 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}
+							>
+								{#each columns as col (col)}
+									<td
+										class="max-w-[24rem] truncate px-3 py-1.5 font-mono"
+										style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);"
+									>
+										{#if isLob(row[col])}
+											<button
+												class="italic underline decoration-dotted"
+												style="color: var(--md-primary);"
+												onclick={() => openLob(row, col)}
+												title="点击查看完整内容"
+											>
+												{row[col]}
+											</button>
+										{:else}
+											{renderCell(row[col])}
+										{/if}
+									</td>
+								{/each}
+								<td
+									class="sticky right-0 px-3 py-1.5"
+									style:background={i % 2 === 0 ? 'var(--md-surface)' : 'var(--md-surface-container-low)'}
+									style="border-bottom: 1px solid var(--md-outline-variant);"
+								>
+									<div class="flex gap-2 text-xs">
+										<button
+											class="md-btn-text"
+											style="padding: 0.125rem 0.5rem;"
+											onclick={() => (editing = row)}
+										>
+											编辑
+										</button>
+										<button
+											class="md-btn-text"
+											style="padding: 0.125rem 0.5rem; color: var(--md-error);"
+											onclick={() => (confirmDelete = row)}
+										>
+											删除
+										</button>
+									</div>
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{/if}
+	</div>
 </section>
 
 <RowEditor
@@ -320,10 +349,19 @@
 	onClose={() => (lobView = null)}
 >
 	{#if lobView?.loading}
-		<p class="py-6 text-center text-sm text-slate-400">读取中…</p>
+		<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">读取中…</p>
 	{:else if lobView?.value === null || lobView?.value === undefined}
-		<p class="py-6 text-center text-sm text-slate-400">NULL</p>
+		<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">NULL</p>
 	{:else}
-		<pre class="max-h-[60vh] overflow-auto rounded-md bg-slate-50 p-3 font-mono text-xs whitespace-pre-wrap">{String(lobView?.value)}</pre>
+		<pre
+			class="max-h-[60vh] overflow-auto p-3 font-mono text-xs whitespace-pre-wrap"
+			style="background: var(--md-surface-container-lowest); color: var(--md-on-surface); border-radius: var(--md-radius-sm); border: 1px solid var(--md-outline-variant);"
+		>{String(lobView?.value)}</pre>
 	{/if}
 </Modal>
+
+<style>
+	tr.row-hover:hover {
+		background: color-mix(in srgb, var(--md-on-surface) 6%, transparent) !important;
+	}
+</style>
