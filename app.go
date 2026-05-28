@@ -45,7 +45,7 @@ func (a *App) FetchDatabaseData(reqJSON string) string {
 	if a.engine == nil {
 		return `{"success":false,"error":"engine not ready"}`
 	}
-	resp, err := a.engine.Invoke(reqJSON)
+	resp, err := a.engine.Invoke(a.ctx, reqJSON)
 	if err != nil {
 		return `{"success":false,"error":"pipe error: ` + escapeJSONString(err.Error()) + `"}`
 	}
