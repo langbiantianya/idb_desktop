@@ -3,7 +3,7 @@
 
 import { FetchDatabaseData } from '../../../wailsjs/go/main/App.js';
 
-/** @typedef {'mysql' | 'postgresql'} Driver */
+/** @typedef {'Mysql' | 'Postgres'} Driver */
 /** @typedef {'SCHEMA' | 'USER' | 'TABLE' | 'DATA' | 'SQL'} Category */
 /** @typedef {'LIST' | 'CREATE' | 'UPDATE' | 'DELETE' | 'EXECUTE'} Action */
 

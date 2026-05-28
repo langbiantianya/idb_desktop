@@ -17,8 +17,8 @@
 	let pending = $state(false);
 
 	function adjustDefaultPort() {
-		if (conn.driver === 'postgresql' && conn.port === 3306) conn.port = 5432;
-		else if (conn.driver === 'mysql' && conn.port === 5432) conn.port = 3306;
+		if (conn.driver === 'Postgresql' && conn.port === 3306) conn.port = 5432;
+		else if (conn.driver === 'Mysql' && conn.port === 5432) conn.port = 3306;
 	}
 
 	async function submit(e) {
@@ -66,8 +66,8 @@
 					bind:value={conn.driver}
 					onchange={adjustDefaultPort}
 				>
-					<option value="mysql">MySQL</option>
-					<option value="postgresql">PostgreSQL</option>
+					<option value="Mysql">MySQL</option>
+					<option value="Postgresql">PostgreSQL</option>
 				</select>
 			</label>
 			<label class="flex flex-col gap-1 text-sm">

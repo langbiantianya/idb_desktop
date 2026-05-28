@@ -75,7 +75,7 @@ func StartEngine(ctx context.Context) (*Engine, error) {
 
 	cmd := exec.CommandContext(ctx, javaBin,
 		"-Xms32m",          // 初始堆 32MB
-		"-Xmx64m",          // 最大堆锁死 64MB
+		"-Xmx256m",         // 最大堆锁死 256MB
 		"-XX:+UseSerialGC", // 桌面单人使用，串行 GC 更省内存
 		"-jar", jarPath,
 	)

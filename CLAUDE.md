@@ -105,7 +105,7 @@ idb_desktop/
   "category": "SCHEMA | USER | TABLE | DATA | SQL",
   "action": "LIST | CREATE | UPDATE | DELETE | EXECUTE",
   "connection": {
-    "driver": "mysql | postgresql",
+    "driver": "Mysql | Postgresql",
     "host": "127.0.0.1",
     "port": 3306,
     "user": "root",
@@ -377,7 +377,7 @@ import { writable } from 'svelte/store';
 
 export interface ConnectionConfig {
   id: string;
-  driver: 'mysql' | 'postgresql';
+  driver: 'Mysql' | 'Postgresql';
   host: string;
   port: number;
   user: string;

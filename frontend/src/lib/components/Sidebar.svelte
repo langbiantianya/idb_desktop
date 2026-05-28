@@ -2,6 +2,8 @@
 	import { listSchemas, listTables, listColumns, createSchema, deleteSchema, deleteTable } from '$lib/api';
 	import { asStringList, asTableList, asColumnList } from '$lib/api/normalize.js';
 	import { ok, err } from '$lib/stores/toasts.js';
+	import { isReadOnlySchema } from '$lib/readonly.js';
+	import { untrack } from 'svelte';
 	import Modal from './Modal.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 
@@ -108,9 +110,10 @@
 	});
 
 	$effect(() => {
-		// 主动展开当前选中的 schema
-		if (selectedSchema && !expanded[selectedSchema]) {
-			toggle(selectedSchema, true);
+		// 选中切换到一个新 schema 时自动展开它；但用户手动折叠后不再强行展回（用 untrack 切断对 expanded 的依赖）
+		if (selectedSchema) {
+			const isExpanded = untrack(() => expanded[selectedSchema]);
+			if (!isExpanded) toggle(selectedSchema, true);
 		}
 	});
 
@@ -212,6 +215,11 @@
 	async function doDelete() {
 		const name = confirming;
 		if (!name) return;
+		if (isReadOnlySchema(baseConn, name)) {
+			err(`${name} 是 MySQL 系统库，禁止删除`);
+			confirming = null;
+			return;
+		}
 		deletePending = true;
 		try {
 			const resp = await deleteSchema(baseConn, name);
@@ -235,6 +243,11 @@
 	async function doDeleteTable() {
 		if (!confirmingTable) return;
 		const { schema, table } = confirmingTable;
+		if (isReadOnlySchema(baseConn, schema)) {
+			err(`${schema} 是 MySQL 系统库，禁止删除表`);
+			confirmingTable = null;
+			return;
+		}
 		deleteTablePending = true;
 		try {
 			const resp = await deleteTable({ ...baseConn, database: schema }, table);
@@ -301,7 +314,7 @@
 	}
 
 	function quoteIdent(s) {
-		const ch = baseConn.driver === 'mysql' ? '`' : '"';
+		const ch = baseConn.driver === 'Mysql' ? '`' : '"';
 		return ch + String(s).replaceAll(ch, ch + ch) + ch;
 	}
 
@@ -479,14 +492,23 @@
 							onmouseleave={(e) =>
 								selectedSchema !== s && (e.currentTarget.style.background = 'transparent')}
 							onclick={() => {
-								onSelectSchema(s);
-								toggle(s, true);
+								// 已经选中再次点击 → 折叠 / 展开切换；切换到新 schema 默认展开
+								if (selectedSchema === s) {
+									toggle(s);
+								} else {
+									onSelectSchema(s);
+									toggle(s, true);
+								}
 							}}
 							onkeydown={(e) => {
 								if (e.key === 'Enter' || e.key === ' ') {
 									e.preventDefault();
-									onSelectSchema(s);
-									toggle(s, true);
+									if (selectedSchema === s) {
+										toggle(s);
+									} else {
+										onSelectSchema(s);
+										toggle(s, true);
+									}
 								}
 							}}
 							oncontextmenu={(e) => {
@@ -515,30 +537,34 @@
 							</span>
 							<span class="text-xs" style="color: var(--md-primary);">DB</span>
 							<span class="flex-1 truncate font-mono text-xs">{s}</span>
-							<button
-								type="button"
-								class="md-icon-btn opacity-0 group-hover:opacity-100"
-								style="width: 1.25rem; height: 1.25rem;"
-								title="新建表"
-								onclick={(e) => {
-									e.stopPropagation();
-									onCreateTable?.(s);
-								}}
-							>
-								<span style="color: var(--md-primary); font-size: 0.75rem;">＋</span>
-							</button>
-							<button
-								type="button"
-								class="md-icon-btn opacity-0 group-hover:opacity-100"
-								style="width: 1.25rem; height: 1.25rem;"
-								title="删除"
-								onclick={(e) => {
-									e.stopPropagation();
-									confirming = s;
-								}}
-							>
-								<span style="color: var(--md-error); font-size: 0.75rem;">✕</span>
-							</button>
+							{#if isReadOnlySchema(baseConn, s)}
+								<span class="md-chip" title="MySQL 系统库，只读">RO</span>
+							{:else}
+								<button
+									type="button"
+									class="md-icon-btn opacity-0 group-hover:opacity-100"
+									style="width: 1.25rem; height: 1.25rem;"
+									title="新建表"
+									onclick={(e) => {
+										e.stopPropagation();
+										onCreateTable?.(s);
+									}}
+								>
+									<span style="color: var(--md-primary); font-size: 0.75rem;">＋</span>
+								</button>
+								<button
+									type="button"
+									class="md-icon-btn opacity-0 group-hover:opacity-100"
+									style="width: 1.25rem; height: 1.25rem;"
+									title="删除"
+									onclick={(e) => {
+										e.stopPropagation();
+										confirming = s;
+									}}
+								>
+									<span style="color: var(--md-error); font-size: 0.75rem;">✕</span>
+								</button>
+							{/if}
 						</div>
 
 						<!-- table children -->
@@ -621,18 +647,20 @@
 												>
 													<span style="color: var(--md-on-surface-variant); font-size: 0.625rem;">⊞</span>
 												</button>
-												<button
-													type="button"
-													class="md-icon-btn opacity-0 group-hover/row:opacity-100"
-													style="width: 1.125rem; height: 1.125rem;"
-													title="删除表"
-													onclick={(e) => {
-														e.stopPropagation();
-														confirmingTable = { schema: s, table: t.name };
-													}}
-												>
-													<span style="color: var(--md-error); font-size: 0.625rem;">✕</span>
-												</button>
+												{#if !isReadOnlySchema(baseConn, s)}
+													<button
+														type="button"
+														class="md-icon-btn opacity-0 group-hover/row:opacity-100"
+														style="width: 1.125rem; height: 1.125rem;"
+														title="删除表"
+														onclick={(e) => {
+															e.stopPropagation();
+															confirmingTable = { schema: s, table: t.name };
+														}}
+													>
+														<span style="color: var(--md-error); font-size: 0.625rem;">✕</span>
+													</button>
+												{/if}
 											</div>
 
 											{#if tableExpanded[tk]}
@@ -763,6 +791,7 @@
 	>
 		{#if menu.kind === 'schema'}
 			{@const schema = menu.schema}
+			{@const ro = isReadOnlySchema(baseConn, schema)}
 			<button
 				type="button"
 				role="menuitem"
@@ -774,17 +803,19 @@
 				<span style="color: var(--md-on-surface-variant); width: 1rem;">↻</span>
 				<span>刷新</span>
 			</button>
-			<button
-				type="button"
-				role="menuitem"
-				class="flex items-center gap-2 px-3 py-1.5 text-left transition"
-				onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-on-surface) 8%, transparent)')}
-				onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-				onclick={() => menuCreateTable(schema)}
-			>
-				<span style="color: var(--md-primary); width: 1rem;">＋</span>
-				<span>新建表</span>
-			</button>
+			{#if !ro}
+				<button
+					type="button"
+					role="menuitem"
+					class="flex items-center gap-2 px-3 py-1.5 text-left transition"
+					onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-on-surface) 8%, transparent)')}
+					onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
+					onclick={() => menuCreateTable(schema)}
+				>
+					<span style="color: var(--md-primary); width: 1rem;">＋</span>
+					<span>新建表</span>
+				</button>
+			{/if}
 			<button
 				type="button"
 				role="menuitem"
@@ -796,21 +827,24 @@
 				<span style="color: var(--md-on-surface-variant); width: 1rem;">⧉</span>
 				<span>复制引用</span>
 			</button>
-			<div style="height: 1px; background: var(--md-outline-variant); margin: 0.25rem 0;"></div>
-			<button
-				type="button"
-				role="menuitem"
-				class="flex items-center gap-2 px-3 py-1.5 text-left transition"
-				onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-error) 12%, transparent)')}
-				onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-				onclick={() => menuDeleteSchema(schema)}
-			>
-				<span style="color: var(--md-error); width: 1rem;">✕</span>
-				<span style="color: var(--md-error);">删除 schema</span>
-			</button>
+			{#if !ro}
+				<div style="height: 1px; background: var(--md-outline-variant); margin: 0.25rem 0;"></div>
+				<button
+					type="button"
+					role="menuitem"
+					class="flex items-center gap-2 px-3 py-1.5 text-left transition"
+					onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-error) 12%, transparent)')}
+					onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
+					onclick={() => menuDeleteSchema(schema)}
+				>
+					<span style="color: var(--md-error); width: 1rem;">✕</span>
+					<span style="color: var(--md-error);">删除 schema</span>
+				</button>
+			{/if}
 		{:else if menu.kind === 'table'}
 			{@const schema = menu.schema}
 			{@const table = menu.table}
+			{@const ro = isReadOnlySchema(baseConn, schema)}
 			<button
 				type="button"
 				role="menuitem"
@@ -855,18 +889,20 @@
 				<span style="color: var(--md-on-surface-variant); width: 1rem;">⧉</span>
 				<span>复制引用</span>
 			</button>
-			<div style="height: 1px; background: var(--md-outline-variant); margin: 0.25rem 0;"></div>
-			<button
-				type="button"
-				role="menuitem"
-				class="flex items-center gap-2 px-3 py-1.5 text-left transition"
-				onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-error) 12%, transparent)')}
-				onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-				onclick={() => menuDeleteTable(schema, table)}
-			>
-				<span style="color: var(--md-error); width: 1rem;">✕</span>
-				<span style="color: var(--md-error);">删除表</span>
-			</button>
+			{#if !ro}
+				<div style="height: 1px; background: var(--md-outline-variant); margin: 0.25rem 0;"></div>
+				<button
+					type="button"
+					role="menuitem"
+					class="flex items-center gap-2 px-3 py-1.5 text-left transition"
+					onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-error) 12%, transparent)')}
+					onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
+					onclick={() => menuDeleteTable(schema, table)}
+				>
+					<span style="color: var(--md-error); width: 1rem;">✕</span>
+					<span style="color: var(--md-error);">删除表</span>
+				</button>
+			{/if}
 		{:else}
 			{@const schema = menu.schema}
 			{@const table = menu.table}

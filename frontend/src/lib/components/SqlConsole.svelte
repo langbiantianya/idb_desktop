@@ -9,6 +9,7 @@
 		renderCell
 	} from '$lib/api/normalize.js';
 	import { ok, err } from '$lib/stores/toasts.js';
+	import { isReadOnlySchema, detectWriteKeyword } from '$lib/readonly.js';
 	import { format as formatSql } from 'sql-formatter';
 	import SqlEditor from './SqlEditor.svelte';
 
@@ -227,7 +228,7 @@
 		const trimmed = sql.trim();
 		if (!trimmed) return;
 		try {
-			const language = schemaConn.driver === 'postgresql' ? 'postgresql' : 'mysql';
+			const language = schemaConn.driver === 'Postgresql' ? 'Postgres' : 'Mysql';
 			const formatted = formatSql(trimmed, {
 				language,
 				keywordCase: 'upper',
@@ -316,6 +317,17 @@
 		if (!source) return;
 		const stmts = splitStatements(source);
 		if (stmts.length === 0) return;
+
+		const ro = isReadOnlySchema(schemaConn, schemaConn.database);
+		if (ro) {
+			for (const stmt of stmts) {
+				const kw = detectWriteKeyword(stmt);
+				if (kw) {
+					err(`MySQL 系统库只读，禁止执行 ${kw} 语句`);
+					return;
+				}
+			}
+		}
 
 		pending = true;
 		const collected = /** @type {StatementResult[]} */ ([]);

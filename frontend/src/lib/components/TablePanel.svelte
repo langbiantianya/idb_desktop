@@ -2,6 +2,7 @@
 	import { listColumns, addTableColumn, modifyTableColumn, dropTableColumn } from '$lib/api';
 	import { asColumnList } from '$lib/api/normalize.js';
 	import { ok, err } from '$lib/stores/toasts.js';
+	import { isReadOnlySchema } from '$lib/readonly.js';
 	import Modal from './Modal.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 
@@ -45,6 +46,8 @@
 	let confirmDrop = $state(/** @type {string | null} */ (null));
 	let dropPending = $state(false);
 
+	let readOnly = $derived(isReadOnlySchema(schemaConn, schemaConn?.database));
+
 	$effect(() => {
 		if (!open || !schemaConn || !tableName) return;
 		void load();
@@ -73,6 +76,11 @@
 
 	async function submitAdd() {
 		if (!schemaConn) return;
+		if (readOnly) {
+			err(`${schemaConn.database} 是 MySQL 系统库，禁止添加列`);
+			adding = false;
+			return;
+		}
 		const n = addDraft.name.trim();
 		const t = addDraft.type.trim().toUpperCase();
 		if (!n) {
@@ -117,6 +125,11 @@
 
 	async function submitEdit() {
 		if (!schemaConn || !editing) return;
+		if (readOnly) {
+			err(`${schemaConn.database} 是 MySQL 系统库，禁止修改列`);
+			editing = null;
+			return;
+		}
 		const t = editDraft.type.trim().toUpperCase();
 		if (!t) {
 			err('类型不能为空');
@@ -146,6 +159,11 @@
 
 	async function doDrop() {
 		if (!schemaConn || !confirmDrop) return;
+		if (readOnly) {
+			err(`${schemaConn.database} 是 MySQL 系统库，禁止删除列`);
+			confirmDrop = null;
+			return;
+		}
 		dropPending = true;
 		try {
 			const resp = await dropTableColumn(schemaConn, tableName, confirmDrop);
@@ -170,7 +188,11 @@
 		</span>
 		<div class="flex items-center gap-1">
 			<button class="md-icon-btn" title="刷新" onclick={load} disabled={pending}>↻</button>
-			<button class="md-btn-text" onclick={openAdd} disabled={pending}>+ 添加列</button>
+			{#if readOnly}
+				<span class="md-chip" title="MySQL 系统库，只读">RO · 只读</span>
+			{:else}
+				<button class="md-btn-text" onclick={openAdd} disabled={pending}>+ 添加列</button>
+			{/if}
 		</div>
 	</div>
 
@@ -224,26 +246,28 @@
 								{c.defaultValue == null ? '—' : String(c.defaultValue)}
 							</td>
 							<td class="px-3 py-1" style="border-bottom: 1px solid var(--md-outline-variant);">
-								<div class="flex items-center justify-end gap-1">
-									<button
-										type="button"
-										class="md-btn-text"
-										style="padding: 0.125rem 0.5rem;"
-										onclick={() => openEdit(c)}
-									>
-										修改
-									</button>
-									<button
-										type="button"
-										class="md-btn-text"
-										style="padding: 0.125rem 0.5rem; color: var(--md-error);"
-										onclick={() => (confirmDrop = c.name)}
-										disabled={c.isPrimaryKey === true}
-										title={c.isPrimaryKey ? '主键列不可在此处删除' : '删除列'}
-									>
-										删除
-									</button>
-								</div>
+								{#if !readOnly}
+									<div class="flex items-center justify-end gap-1">
+										<button
+											type="button"
+											class="md-btn-text"
+											style="padding: 0.125rem 0.5rem;"
+											onclick={() => openEdit(c)}
+										>
+											修改
+										</button>
+										<button
+											type="button"
+											class="md-btn-text"
+											style="padding: 0.125rem 0.5rem; color: var(--md-error);"
+											onclick={() => (confirmDrop = c.name)}
+											disabled={c.isPrimaryKey === true}
+											title={c.isPrimaryKey ? '主键列不可在此处删除' : '删除列'}
+										>
+											删除
+										</button>
+									</div>
+								{/if}
 							</td>
 						</tr>
 					{/each}

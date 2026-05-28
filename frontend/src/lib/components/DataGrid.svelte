@@ -9,6 +9,7 @@
 	} from '$lib/api';
 	import { asDataPage, asColumnList, asSqlResult, isLob, renderCell } from '$lib/api/normalize.js';
 	import { ok, err } from '$lib/stores/toasts.js';
+	import { isReadOnlySchema } from '$lib/readonly.js';
 	import Modal from './Modal.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import RowEditor from './RowEditor.svelte';
@@ -41,6 +42,7 @@
 	let lobView = $state(/** @type {{ column: string; row: Record<string, unknown>; loading: boolean; value: unknown } | null} */ (null));
 
 	let pkColumns = $derived(columnMeta.filter((c) => c.isPrimaryKey).map((c) => c.name));
+	let readOnly = $derived(isReadOnlySchema(schemaConn, schemaName));
 
 	$effect(() => {
 		schemaConn;
@@ -87,6 +89,11 @@
 	}
 
 	async function doInsert(values) {
+		if (readOnly) {
+			err(`${schemaName} 是 MySQL 系统库，禁止写入`);
+			inserting = false;
+			return;
+		}
 		actionPending = true;
 		try {
 			const resp = await createRow(schemaConn, tableName, values);
@@ -103,6 +110,11 @@
 	}
 
 	async function doUpdate(changes, where) {
+		if (readOnly) {
+			err(`${schemaName} 是 MySQL 系统库，禁止更新`);
+			editing = null;
+			return;
+		}
 		actionPending = true;
 		try {
 			const resp = await updateRow(schemaConn, tableName, changes, where ?? {});
@@ -120,6 +132,11 @@
 
 	async function doDelete() {
 		if (!confirmDelete) return;
+		if (readOnly) {
+			err(`${schemaName} 是 MySQL 系统库，禁止删除`);
+			confirmDelete = null;
+			return;
+		}
 		actionPending = true;
 		try {
 			const where = buildRowWhere(confirmDelete);
@@ -161,7 +178,7 @@
 	}
 
 	function quoteIdent(s) {
-		const ch = schemaConn.driver === 'mysql' ? '`' : '"';
+		const ch = schemaConn.driver === 'Mysql' ? '`' : '"';
 		return ch + String(s).replaceAll(ch, ch + ch) + ch;
 	}
 
@@ -206,13 +223,17 @@
 			<button class="md-icon-btn" title="刷新" onclick={() => load()} disabled={pending}>
 				↻
 			</button>
-			<button
-				class="md-btn-filled"
-				onclick={() => (inserting = true)}
-				disabled={columns.length === 0 && columnMeta.length === 0}
-			>
-				+ 插入
-			</button>
+			{#if readOnly}
+				<span class="md-chip" title="MySQL 系统库，只读">RO · 只读</span>
+			{:else}
+				<button
+					class="md-btn-filled"
+					onclick={() => (inserting = true)}
+					disabled={columns.length === 0 && columnMeta.length === 0}
+				>
+					+ 插入
+				</button>
+			{/if}
 		</div>
 	</header>
 
@@ -243,12 +264,14 @@
 									{/if}
 								</th>
 							{/each}
-							<th
-								class="sticky right-0 px-3 py-2 font-medium"
-								style="background: var(--md-surface-container); border-bottom: 1px solid var(--md-outline-variant);"
-							>
-								操作
-							</th>
+							{#if !readOnly}
+								<th
+									class="sticky right-0 px-3 py-2 font-medium"
+									style="background: var(--md-surface-container); border-bottom: 1px solid var(--md-outline-variant);"
+								>
+									操作
+								</th>
+							{/if}
 						</tr>
 					</thead>
 					<tbody>
@@ -276,28 +299,30 @@
 										{/if}
 									</td>
 								{/each}
-								<td
-									class="sticky right-0 px-3 py-1.5"
-									style:background={i % 2 === 0 ? 'var(--md-surface)' : 'var(--md-surface-container-low)'}
-									style="border-bottom: 1px solid var(--md-outline-variant);"
-								>
-									<div class="flex gap-2 text-xs">
-										<button
-											class="md-btn-text"
-											style="padding: 0.125rem 0.5rem;"
-											onclick={() => (editing = row)}
-										>
-											编辑
-										</button>
-										<button
-											class="md-btn-text"
-											style="padding: 0.125rem 0.5rem; color: var(--md-error);"
-											onclick={() => (confirmDelete = row)}
-										>
-											删除
-										</button>
-									</div>
-								</td>
+								{#if !readOnly}
+									<td
+										class="sticky right-0 px-3 py-1.5"
+										style:background={i % 2 === 0 ? 'var(--md-surface)' : 'var(--md-surface-container-low)'}
+										style="border-bottom: 1px solid var(--md-outline-variant);"
+									>
+										<div class="flex gap-2 text-xs">
+											<button
+												class="md-btn-text"
+												style="padding: 0.125rem 0.5rem;"
+												onclick={() => (editing = row)}
+											>
+												编辑
+											</button>
+											<button
+												class="md-btn-text"
+												style="padding: 0.125rem 0.5rem; color: var(--md-error);"
+												onclick={() => (confirmDelete = row)}
+											>
+												删除
+											</button>
+										</div>
+									</td>
+								{/if}
 							</tr>
 						{/each}
 					</tbody>
