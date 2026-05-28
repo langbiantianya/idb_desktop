@@ -14,7 +14,11 @@
       "Bash(javap -cp engine/bin/idb-engine.jar -p com.kxxnzstdsw.handlers.DataHandler)",
       "Bash(javap -cp engine/bin/idb-engine.jar -p com.kxxnzstdsw.dispatcher.RequestDispatcher)",
       "Bash(javap -cp d:/project/idb_desktop/engine/bin/idb-engine.jar -c -p com.kxxnzstdsw.handlers.TableHandler)",
-      "Bash(javap -cp d:/project/idb_desktop/engine/bin/idb-engine.jar -c -p com.kxxnzstdsw.handlers.DataHandler)"
+      "Bash(javap -cp d:/project/idb_desktop/engine/bin/idb-engine.jar -c -p com.kxxnzstdsw.handlers.DataHandler)",
+      "WebFetch(domain:github.com)",
+      "Bash(npm ls *)",
+      "Bash(npm install *)",
+      "Bash(npm --prefix frontend run build)"
     ]
   }
 }

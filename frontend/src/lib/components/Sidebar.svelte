@@ -1,6 +1,6 @@
 <script>
-	import { listSchemas, listTables, createSchema, deleteSchema, deleteTable } from '$lib/api';
-	import { asStringList, asTableList } from '$lib/api/normalize.js';
+	import { listSchemas, listTables, listColumns, createSchema, deleteSchema, deleteTable } from '$lib/api';
+	import { asStringList, asTableList, asColumnList } from '$lib/api/normalize.js';
 	import { ok, err } from '$lib/stores/toasts.js';
 	import Modal from './Modal.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
@@ -41,6 +41,13 @@
 	/** schema -> 是否正在加载子节点 @type {Record<string, boolean>} */
 	let loading = $state({});
 
+	/** "schema.table" -> 列元数据（懒加载） @type {Record<string, import('$lib/api').ColumnMeta[]>} */
+	let columnsByTable = $state({});
+	/** "schema.table" -> 是否展开列 @type {Record<string, boolean>} */
+	let tableExpanded = $state({});
+	/** "schema.table" -> 是否正在加载列 @type {Record<string, boolean>} */
+	let colsLoading = $state({});
+
 	let creating = $state(false);
 	let newName = $state('');
 	let createPending = $state(false);
@@ -54,11 +61,46 @@
 	/**
 	 * @typedef {{ x: number; y: number; kind: 'schema'; schema: string }
 	 *   | { x: number; y: number; kind: 'table'; schema: string; table: string }
+	 *   | { x: number; y: number; kind: 'column'; schema: string; table: string; column: string }
 	 * } MenuState
 	 */
 	let menu = $state(/** @type {MenuState | null} */ (null));
 
 	let filter = $state('');
+
+	// 宽度 / 折叠：折叠时只显示一个展开按钮（约 2.25rem 宽）；展开时默认 18rem，可拖拽 [4rem, 32rem]。
+	const MIN_WIDTH = 64; // 4rem，约 2-3 个汉字 / 4-5 个等宽字符
+	const MAX_WIDTH = 512;
+	const DEFAULT_WIDTH = 288;
+	const COLLAPSED_WIDTH = 36;
+	let collapsed = $state(false);
+	let width = $state(DEFAULT_WIDTH);
+	let resizing = $state(false);
+	let displayWidth = $derived(collapsed ? COLLAPSED_WIDTH : width);
+
+	function startResize(e) {
+		if (collapsed) return;
+		e.preventDefault();
+		resizing = true;
+		const startX = e.clientX;
+		const startWidth = width;
+		const onMove = (ev) => {
+			const next = startWidth + (ev.clientX - startX);
+			width = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, next));
+		};
+		const onUp = () => {
+			resizing = false;
+			window.removeEventListener('mousemove', onMove);
+			window.removeEventListener('mouseup', onUp);
+		};
+		window.addEventListener('mousemove', onMove);
+		window.addEventListener('mouseup', onUp);
+	}
+
+	function toggleCollapsed() {
+		collapsed = !collapsed;
+		if (!collapsed && width < MIN_WIDTH) width = DEFAULT_WIDTH;
+	}
 
 	$effect(() => {
 		baseConn;
@@ -97,6 +139,21 @@
 				return;
 			}
 			tablesBySchema = { ...tablesBySchema, [schema]: asTableList(resp.data) };
+			// 表列表变化时，丢弃该 schema 下所有表的列缓存与展开态，让用户重新展开拉新数据
+			const prefix = `${schema}.`;
+			const nextCols = { ...columnsByTable };
+			const nextTE = { ...tableExpanded };
+			let dirty = false;
+			for (const k of Object.keys(nextCols)) {
+				if (k.startsWith(prefix)) { delete nextCols[k]; dirty = true; }
+			}
+			for (const k of Object.keys(nextTE)) {
+				if (k.startsWith(prefix)) { delete nextTE[k]; dirty = true; }
+			}
+			if (dirty) {
+				columnsByTable = nextCols;
+				tableExpanded = nextTE;
+			}
 		} finally {
 			loading = { ...loading, [schema]: false };
 		}
@@ -106,6 +163,31 @@
 		const target = force === undefined ? !expanded[schema] : force;
 		expanded = { ...expanded, [schema]: target };
 		if (target && !tablesBySchema[schema]) await loadTables(schema);
+	}
+
+	/** @param {string} schema @param {string} table */
+	async function loadColumns(schema, table) {
+		const key = `${schema}.${table}`;
+		colsLoading = { ...colsLoading, [key]: true };
+		try {
+			const resp = await listColumns({ ...baseConn, database: schema }, table);
+			if (!resp.success) {
+				err(resp.error ?? `加载 ${schema}.${table} 列失败`);
+				columnsByTable = { ...columnsByTable, [key]: [] };
+				return;
+			}
+			columnsByTable = { ...columnsByTable, [key]: asColumnList(resp.data) };
+		} finally {
+			colsLoading = { ...colsLoading, [key]: false };
+		}
+	}
+
+	/** @param {string} schema @param {string} table @param {boolean} [force] */
+	async function toggleTable(schema, table, force) {
+		const key = `${schema}.${table}`;
+		const target = force === undefined ? !tableExpanded[key] : force;
+		tableExpanded = { ...tableExpanded, [key]: target };
+		if (target && !columnsByTable[key]) await loadColumns(schema, table);
 	}
 
 	async function doCreate() {
@@ -253,6 +335,22 @@
 		void copyText(`${quoteIdent(schema)}.${quoteIdent(table)}`);
 	}
 
+	function openColumnMenu(e, schema, table, column) {
+		e.preventDefault();
+		e.stopPropagation();
+		menu = { x: e.clientX, y: e.clientY, kind: 'column', schema, table, column };
+	}
+
+	function menuCopyColumnRef(schema, table, column) {
+		closeMenu();
+		void copyText(`${quoteIdent(schema)}.${quoteIdent(table)}.${quoteIdent(column)}`);
+	}
+
+	function menuCopyColumnName(column) {
+		closeMenu();
+		void copyText(quoteIdent(column));
+	}
+
 	let filteredSchemas = $derived(
 		filter ? schemas.filter((s) => s.toLowerCase().includes(filter.toLowerCase())) : schemas
 	);
@@ -266,43 +364,71 @@
 </script>
 
 <aside
-	class="flex h-full w-72 shrink-0 flex-col border-r"
+	class="relative flex h-full shrink-0 flex-col border-r"
+	style:width="{displayWidth}px"
+	style:user-select={resizing ? 'none' : 'auto'}
 	style="background: var(--md-surface-container-low); border-color: var(--md-outline-variant);"
 >
-	<!-- Sidebar header -->
-	<div
-		class="flex items-center justify-between gap-2 px-3 py-2.5"
-		style="border-bottom: 1px solid var(--md-outline-variant);"
-	>
-		<div class="flex items-center gap-2">
-			<span class="text-sm" style="color: var(--md-on-surface-variant);">DATABASE</span>
-			{#if pending}
-				<span class="animate-pulse text-xs" style="color: var(--md-on-surface-variant);">…</span>
-			{/if}
-		</div>
-		<div class="flex items-center gap-0.5">
+	{#if collapsed}
+		<div
+			class="flex h-full flex-col items-center gap-2 py-2"
+			style="border-right: none;"
+		>
 			<button
 				type="button"
 				class="md-icon-btn"
-				title="刷新"
-				onclick={refreshSchemas}
-				disabled={pending}
+				title="展开侧栏"
+				aria-label="展开侧栏"
+				onclick={toggleCollapsed}
 			>
-				↻
+				»
 			</button>
-			<button
-				type="button"
-				class="md-icon-btn"
-				title="新建 schema"
-				onclick={() => {
-					newName = '';
-					creating = true;
-				}}
-			>
-				＋
-			</button>
+			<span class="mt-1 text-[10px] tracking-widest" style="writing-mode: vertical-rl; color: var(--md-on-surface-variant);">DATABASE</span>
 		</div>
-	</div>
+	{:else}
+		<!-- Sidebar header -->
+		<div
+			class="flex items-center justify-between gap-2 px-3 py-2.5"
+			style="border-bottom: 1px solid var(--md-outline-variant);"
+		>
+			<div class="flex min-w-0 items-center gap-2">
+				<button
+					type="button"
+					class="md-icon-btn"
+					title="折叠侧栏"
+					aria-label="折叠侧栏"
+					onclick={toggleCollapsed}
+				>
+					«
+				</button>
+				<span class="truncate text-sm" style="color: var(--md-on-surface-variant);">DATABASE</span>
+				{#if pending}
+					<span class="animate-pulse text-xs" style="color: var(--md-on-surface-variant);">…</span>
+				{/if}
+			</div>
+			<div class="flex items-center gap-0.5">
+				<button
+					type="button"
+					class="md-icon-btn"
+					title="刷新"
+					onclick={refreshSchemas}
+					disabled={pending}
+				>
+					↻
+				</button>
+				<button
+					type="button"
+					class="md-icon-btn"
+					title="新建 schema"
+					onclick={() => {
+						newName = '';
+						creating = true;
+					}}
+				>
+					＋
+				</button>
+			</div>
+		</div>
 
 	<!-- Filter -->
 	<div class="px-3 py-2">
@@ -428,11 +554,12 @@
 									</li>
 								{:else}
 									{#each tablesIn(s) as t (t.name)}
+										{@const tk = `${s}.${t.name}`}
 										<li>
 											<div
 												role="button"
 												tabindex="0"
-												class="group/row flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1 pr-1 pl-2 text-left text-xs transition"
+												class="group/row flex w-full cursor-pointer items-center gap-1 rounded-md py-1 pr-1 pl-1 text-left text-xs transition"
 												style:background={selectedSchema === s && selectedTable === t.name
 													? 'var(--md-primary-container)'
 													: 'transparent'}
@@ -456,6 +583,25 @@
 												}}
 												oncontextmenu={(e) => openTableMenu(e, s, t.name)}
 											>
+												<span
+													class="inline-block w-3 text-center text-[10px] transition-transform"
+													style:transform={tableExpanded[tk] ? 'rotate(90deg)' : 'rotate(0deg)'}
+													onclick={(e) => {
+														e.stopPropagation();
+														toggleTable(s, t.name);
+													}}
+													onkeydown={(e) => {
+														if (e.key === 'Enter' || e.key === ' ') {
+															e.preventDefault();
+															e.stopPropagation();
+															toggleTable(s, t.name);
+														}
+													}}
+													role="button"
+													tabindex="-1"
+												>
+													▶
+												</span>
 												<span class="text-[10px]" style="color: var(--md-tertiary-container); filter: brightness(0.7);">
 													▦
 												</span>
@@ -488,6 +634,49 @@
 													<span style="color: var(--md-error); font-size: 0.625rem;">✕</span>
 												</button>
 											</div>
+
+											{#if tableExpanded[tk]}
+												<ul class="ml-5 flex flex-col gap-px border-l" style="border-color: var(--md-outline-variant);">
+													{#if colsLoading[tk]}
+														<li class="px-3 py-1 text-[11px]" style="color: var(--md-on-surface-variant);">
+															加载中…
+														</li>
+													{:else if (columnsByTable[tk] ?? []).length === 0}
+														<li class="px-3 py-1 text-[11px]" style="color: var(--md-on-surface-variant);">
+															无列
+														</li>
+													{:else}
+														{#each columnsByTable[tk] as c (c.name)}
+															<li
+																role="button"
+																tabindex="0"
+																class="flex w-full cursor-default items-center gap-1.5 rounded-md py-0.5 pr-2 pl-2 text-left text-[11px] transition"
+																onmouseenter={(e) =>
+																	(e.currentTarget.style.background =
+																		'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
+																onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
+																ondblclick={() => void copyText(quoteIdent(c.name))}
+																onkeydown={(e) => {
+																	if (e.key === 'Enter') {
+																		e.preventDefault();
+																		void copyText(quoteIdent(c.name));
+																	}
+																}}
+																oncontextmenu={(e) => openColumnMenu(e, s, t.name, c.name)}
+																title={`${c.name} : ${c.type}${c.size ? `(${c.size})` : ''}${c.nullable === false ? ' NOT NULL' : ''}${c.isPrimaryKey ? ' PK' : ''}`}
+															>
+																<span class="text-[10px]" style:color={c.isPrimaryKey ? 'var(--md-tertiary)' : 'var(--md-on-surface-variant)'}>
+																	{c.isPrimaryKey ? '◆' : '·'}
+																</span>
+																<span class="truncate font-mono" style="color: var(--md-on-surface);">{c.name}</span>
+																<span class="ml-auto truncate font-mono text-[10px]" style="color: var(--md-on-surface-variant); max-width: 8rem;">
+																	{c.type}{c.size ? `(${c.size})` : ''}
+																</span>
+															</li>
+														{/each}
+													{/if}
+												</ul>
+											{/if}
 										</li>
 									{/each}
 								{/if}
@@ -498,6 +687,18 @@
 			</ul>
 		{/if}
 	</div>
+	{/if}
+
+	{#if !collapsed}
+		<button
+			type="button"
+			class="resize-handle"
+			aria-label="拖拽调整侧栏宽度"
+			title="拖拽调整宽度（双击重置）"
+			onmousedown={startResize}
+			ondblclick={() => (width = DEFAULT_WIDTH)}
+		></button>
+	{/if}
 </aside>
 
 <!-- 创建 schema -->
@@ -607,7 +808,7 @@
 				<span style="color: var(--md-error); width: 1rem;">✕</span>
 				<span style="color: var(--md-error);">删除 schema</span>
 			</button>
-		{:else}
+		{:else if menu.kind === 'table'}
 			{@const schema = menu.schema}
 			{@const table = menu.table}
 			<button
@@ -666,6 +867,36 @@
 				<span style="color: var(--md-error); width: 1rem;">✕</span>
 				<span style="color: var(--md-error);">删除表</span>
 			</button>
+		{:else}
+			{@const schema = menu.schema}
+			{@const table = menu.table}
+			{@const column = menu.column}
+			<div class="px-3 py-1 text-[11px]" style="color: var(--md-on-surface-variant);">
+				<span class="font-mono">{column}</span>
+			</div>
+			<div style="height: 1px; background: var(--md-outline-variant); margin: 0.25rem 0;"></div>
+			<button
+				type="button"
+				role="menuitem"
+				class="flex items-center gap-2 px-3 py-1.5 text-left transition"
+				onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-on-surface) 8%, transparent)')}
+				onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
+				onclick={() => menuCopyColumnName(column)}
+			>
+				<span style="color: var(--md-on-surface-variant); width: 1rem;">⧉</span>
+				<span>复制列名</span>
+			</button>
+			<button
+				type="button"
+				role="menuitem"
+				class="flex items-center gap-2 px-3 py-1.5 text-left transition"
+				onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-on-surface) 8%, transparent)')}
+				onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
+				onclick={() => menuCopyColumnRef(schema, table, column)}
+			>
+				<span style="color: var(--md-on-surface-variant); width: 1rem;">⧉</span>
+				<span>复制限定引用</span>
+			</button>
 		{/if}
 	</div>
 {/if}
@@ -673,3 +904,22 @@
 <svelte:window
 	onkeydown={menu ? (e) => { if (e.key === 'Escape') closeMenu(); } : null}
 />
+
+<style>
+	.resize-handle {
+		position: absolute;
+		top: 0;
+		right: -3px;
+		width: 6px;
+		height: 100%;
+		padding: 0;
+		background: transparent;
+		border: none;
+		cursor: col-resize;
+		z-index: 10;
+	}
+	.resize-handle:hover,
+	.resize-handle:active {
+		background: color-mix(in srgb, var(--md-primary) 24%, transparent);
+	}
+</style>
