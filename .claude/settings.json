@@ -18,7 +18,10 @@
       "WebFetch(domain:github.com)",
       "Bash(npm ls *)",
       "Bash(npm install *)",
-      "Bash(npm --prefix frontend run build)"
+      "Bash(npm --prefix frontend run build)",
+      "Bash(go doc *)",
+      "Bash(wails version *)",
+      "Bash(wails generate *)"
     ]
   }
 }

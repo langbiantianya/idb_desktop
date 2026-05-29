@@ -1,11 +1,19 @@
 <script>
 	import { listSchemas } from '$lib/api';
+	import {
+		listSavedConnections,
+		loadSavedPassword,
+		saveConnectionProfile,
+		deleteConnectionProfile
+	} from '$lib/api/connections.js';
 	import { defaultConnection } from '$lib/stores/appState.js';
-	import { err } from '$lib/stores/toasts.js';
+	import { ok, err } from '$lib/stores/toasts.js';
 	import ThemeToggle from './ThemeToggle.svelte';
+	import ConfirmDialog from './ConfirmDialog.svelte';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
+	 * @typedef {import('$lib/api/connections.js').SavedConnection} SavedConnection
 	 * @typedef {Object} Props
 	 * @property {(conn: ConnectionConfig) => void} onConnected
 	 */
@@ -16,9 +24,92 @@
 	let conn = $state({ ...defaultConnection });
 	let pending = $state(false);
 
+	let saved = $state(/** @type {SavedConnection[]} */ ([]));
+	let activeId = $state('');
+	let savePassword = $state(false);
+	let confirmDeleteId = $state(/** @type {string | null} */ (null));
+
+	$effect(() => {
+		void refreshSaved();
+	});
+
+	async function refreshSaved() {
+		saved = await listSavedConnections();
+	}
+
+	/** @param {SavedConnection} s */
+	async function pickProfile(s) {
+		activeId = s.id;
+		const password = s.hasPassword ? await loadSavedPassword(s.id).catch(() => '') : '';
+		conn = {
+			name: s.name,
+			driver: /** @type {ConnectionConfig['driver']} */ (s.driver),
+			host: s.host,
+			port: s.port,
+			user: s.user,
+			password,
+			database: s.database
+		};
+		savePassword = s.hasPassword;
+	}
+
+	function newProfile() {
+		activeId = '';
+		conn = { ...defaultConnection };
+		savePassword = false;
+	}
+
 	function adjustDefaultPort() {
-		if (conn.driver === 'Postgresql' && conn.port === 3306) conn.port = 5432;
-		else if (conn.driver === 'Mysql' && conn.port === 5432) conn.port = 3306;
+		// 仅当当前 user / port 还停在另一驱动的默认值时才替换；用户改过的就不动。
+		if (conn.driver === 'Postgresql') {
+			if (conn.port === 3306) conn.port = 5432;
+			if (conn.user === 'root') conn.user = 'postgres';
+		} else if (conn.driver === 'Mysql') {
+			if (conn.port === 5432) conn.port = 3306;
+			if (conn.user === 'postgres') conn.user = 'root';
+		}
+	}
+
+	async function save() {
+		const name = (conn.name ?? '').trim();
+		if (!name) {
+			err('请填写连接名称');
+			return;
+		}
+		try {
+			const result = await saveConnectionProfile({
+				id: activeId,
+				name,
+				driver: conn.driver,
+				host: conn.host,
+				port: Number(conn.port) || 0,
+				user: conn.user,
+				password: conn.password ?? '',
+				database: conn.database ?? '',
+				savePassword
+			});
+			if (result) {
+				activeId = result.id;
+				ok(`已保存 ${name}`);
+				await refreshSaved();
+			}
+		} catch (e) {
+			err(e instanceof Error ? e.message : '保存失败');
+		}
+	}
+
+	async function doDelete() {
+		const id = confirmDeleteId;
+		if (!id) return;
+		try {
+			await deleteConnectionProfile(id);
+			ok('已删除');
+			if (activeId === id) newProfile();
+			confirmDeleteId = null;
+			await refreshSaved();
+		} catch (e) {
+			err(e instanceof Error ? e.message : '删除失败');
+		}
 	}
 
 	async function submit(e) {
@@ -41,74 +132,162 @@
 	class="flex min-h-screen items-center justify-center p-6"
 	style="background: var(--md-background);"
 >
-	<div class="w-full max-w-lg">
-		<div class="mb-6 flex items-center justify-between">
-			<div>
-				<h1 class="text-2xl font-semibold tracking-tight" style="color: var(--md-on-background);">
-					idb · 数据库管理
-				</h1>
-				<p class="mt-1 text-sm" style="color: var(--md-on-surface-variant);">
-					本地化 · 零端口 · MySQL / PostgreSQL
-				</p>
-			</div>
-			<ThemeToggle />
-		</div>
-
-		<form
-			class="grid grid-cols-2 gap-4 p-6"
+	<div class="grid w-full max-w-4xl grid-cols-[16rem_1fr] gap-4">
+		<!-- 左侧：保存的连接列表 -->
+		<aside
+			class="flex flex-col"
 			style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant); border-radius: var(--md-radius-lg); box-shadow: var(--md-elev-1);"
-			onsubmit={submit}
 		>
-			<label class="flex flex-col gap-1 text-sm">
-				<span style="color: var(--md-on-surface-variant);">驱动</span>
-				<select
-					class="md-input"
-					bind:value={conn.driver}
-					onchange={adjustDefaultPort}
+			<header class="flex items-center justify-between border-b px-3 py-2.5" style="border-color: var(--md-outline-variant);">
+				<span class="text-xs font-medium" style="color: var(--md-on-surface-variant);">已保存</span>
+				<button
+					type="button"
+					class="md-icon-btn"
+					title="新建空白配置"
+					aria-label="新建"
+					onclick={newProfile}
 				>
-					<option value="Mysql">MySQL</option>
-					<option value="Postgresql">PostgreSQL</option>
-				</select>
-			</label>
-			<label class="flex flex-col gap-1 text-sm">
-				<span style="color: var(--md-on-surface-variant);">主机</span>
-				<input class="md-input" type="text" bind:value={conn.host} required />
-			</label>
-			<label class="flex flex-col gap-1 text-sm">
-				<span style="color: var(--md-on-surface-variant);">端口</span>
-				<input
-					class="md-input"
-					type="number"
-					bind:value={conn.port}
-					min="1"
-					max="65535"
-					required
-				/>
-			</label>
-			<label class="flex flex-col gap-1 text-sm">
-				<span style="color: var(--md-on-surface-variant);">用户名</span>
-				<input class="md-input" type="text" bind:value={conn.user} required />
-			</label>
-			<label class="col-span-2 flex flex-col gap-1 text-sm">
-				<span style="color: var(--md-on-surface-variant);">密码</span>
-				<input
-					class="md-input"
-					type="password"
-					bind:value={conn.password}
-					autocomplete="off"
-				/>
-			</label>
-			<label class="col-span-2 flex flex-col gap-1 text-sm">
-				<span style="color: var(--md-on-surface-variant);">默认 database（可选）</span>
-				<input class="md-input" type="text" bind:value={conn.database} />
-			</label>
-			<button
-				type="submit"
-				class="md-btn-filled col-span-2 mt-2"
-				disabled={pending}
+					＋
+				</button>
+			</header>
+			<div class="flex-1 overflow-auto p-1">
+				{#if saved.length === 0}
+					<p class="px-3 py-6 text-center text-xs" style="color: var(--md-on-surface-variant);">
+						暂无保存的连接
+					</p>
+				{:else}
+					<ul class="flex flex-col gap-px">
+						{#each saved as s (s.id)}
+							<li>
+								<div
+									role="button"
+									tabindex="0"
+									class="group flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition"
+									style:background={activeId === s.id ? 'var(--md-secondary-container)' : 'transparent'}
+									style:color={activeId === s.id ? 'var(--md-on-secondary-container)' : 'var(--md-on-surface)'}
+									onmouseenter={(e) => activeId !== s.id && (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
+									onmouseleave={(e) => activeId !== s.id && (e.currentTarget.style.background = 'transparent')}
+									onclick={() => void pickProfile(s)}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											void pickProfile(s);
+										}
+									}}
+								>
+									<span class="text-xs" style="color: var(--md-primary);">{s.driver === 'Mysql' ? 'My' : 'Pg'}</span>
+									<div class="flex min-w-0 flex-1 flex-col">
+										<span class="truncate text-xs">{s.name || '(未命名)'}</span>
+										<span class="truncate font-mono text-[10px]" style="color: var(--md-on-surface-variant);">
+											{s.user}@{s.host}:{s.port}
+										</span>
+									</div>
+									{#if s.hasPassword}
+										<span class="md-chip" title="已保存密码">PW</span>
+									{/if}
+									<button
+										type="button"
+										class="md-icon-btn opacity-0 group-hover:opacity-100"
+										style="width: 1.25rem; height: 1.25rem;"
+										title="删除"
+										onclick={(e) => {
+											e.stopPropagation();
+											confirmDeleteId = s.id;
+										}}
+									>
+										<span style="color: var(--md-error); font-size: 0.75rem;">✕</span>
+									</button>
+								</div>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</div>
+		</aside>
+
+		<!-- 右侧：连接表单 -->
+		<div class="flex flex-col gap-4">
+			<div class="flex items-center justify-between">
+				<div>
+					<h1 class="text-2xl font-semibold tracking-tight" style="color: var(--md-on-background);">
+						idb · 数据库管理
+					</h1>
+					<p class="mt-1 text-sm" style="color: var(--md-on-surface-variant);">
+						本地化 · 零端口 · MySQL / PostgreSQL
+					</p>
+				</div>
+				<ThemeToggle />
+			</div>
+
+			<form
+				class="grid grid-cols-2 gap-4 p-6"
+				style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant); border-radius: var(--md-radius-lg); box-shadow: var(--md-elev-1);"
+				onsubmit={submit}
 			>
-				{pending ? '请求中…' : '连接并加载 schema'}
-			</button>
-		</form>
+				<label class="col-span-2 flex flex-col gap-1 text-sm">
+					<span style="color: var(--md-on-surface-variant);">连接名称</span>
+					<input
+						class="md-input"
+						type="text"
+						bind:value={conn.name}
+						placeholder="例如 本地 MySQL"
+					/>
+				</label>
+				<label class="flex flex-col gap-1 text-sm">
+					<span style="color: var(--md-on-surface-variant);">驱动</span>
+					<select class="md-input" bind:value={conn.driver} onchange={adjustDefaultPort}>
+						<option value="Mysql">MySQL</option>
+						<option value="Postgresql">PostgreSQL</option>
+					</select>
+				</label>
+				<label class="flex flex-col gap-1 text-sm">
+					<span style="color: var(--md-on-surface-variant);">主机</span>
+					<input class="md-input" type="text" bind:value={conn.host} required />
+				</label>
+				<label class="flex flex-col gap-1 text-sm">
+					<span style="color: var(--md-on-surface-variant);">端口</span>
+					<input class="md-input" type="number" bind:value={conn.port} min="1" max="65535" required />
+				</label>
+				<label class="flex flex-col gap-1 text-sm">
+					<span style="color: var(--md-on-surface-variant);">用户名</span>
+					<input class="md-input" type="text" bind:value={conn.user} required />
+				</label>
+				<label class="col-span-2 flex flex-col gap-1 text-sm">
+					<span style="color: var(--md-on-surface-variant);">密码</span>
+					<input class="md-input" type="password" bind:value={conn.password} autocomplete="off" />
+				</label>
+				<label class="col-span-2 flex flex-col gap-1 text-sm">
+					<span style="color: var(--md-on-surface-variant);">默认 database（可选）</span>
+					<input class="md-input" type="text" bind:value={conn.database} />
+				</label>
+
+				<label class="col-span-2 flex items-center gap-2 text-sm">
+					<input type="checkbox" bind:checked={savePassword} />
+					<span style="color: var(--md-on-surface);">保存密码</span>
+					<span class="text-xs" style="color: var(--md-on-surface-variant);">
+						（Windows 用 DPAPI 绑定当前用户；其他平台 AES-GCM + 本地密钥文件）
+					</span>
+				</label>
+
+				<div class="col-span-2 mt-2 flex items-center justify-between gap-2">
+					<button type="button" class="md-btn-text" onclick={save} disabled={pending}>
+						{activeId ? '保存修改' : '保存为新连接'}
+					</button>
+					<button type="submit" class="md-btn-filled" disabled={pending}>
+						{pending ? '请求中…' : '连接并加载 schema'}
+					</button>
+				</div>
+			</form>
+		</div>
 	</div>
 </div>
+
+<ConfirmDialog
+	open={confirmDeleteId !== null}
+	title="删除连接"
+	message="确认删除这条保存的连接？"
+	confirmText="删除"
+	danger
+	onConfirm={doDelete}
+	onCancel={() => (confirmDeleteId = null)}
+/>

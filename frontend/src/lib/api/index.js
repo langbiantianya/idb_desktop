@@ -15,6 +15,7 @@ import { FetchDatabaseData } from '../../../wailsjs/go/main/App.js';
  * @property {string} user
  * @property {string} password
  * @property {string} database
+ * @property {string} [name]
  */
 
 /**

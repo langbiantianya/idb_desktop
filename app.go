@@ -11,10 +11,11 @@ import (
 type App struct {
 	ctx    context.Context
 	engine *Engine
+	cfg    *configStore
 }
 
 func NewApp() *App {
-	return &App{}
+	return &App{cfg: &configStore{}}
 }
 
 // startup 在 Wails 主窗口创建后调用，用于拉起底层数据引擎。
@@ -50,6 +51,28 @@ func (a *App) FetchDatabaseData(reqJSON string) string {
 		return `{"success":false,"error":"pipe error: ` + escapeJSONString(err.Error()) + `"}`
 	}
 	return resp
+}
+
+// ListConnections 返回所有保存的连接（不含密码本身，仅 hasPassword 标记）。
+func (a *App) ListConnections() ([]SavedConnection, error) {
+	return a.cfg.listConnections()
+}
+
+// GetConnectionPassword 解密并返回某条连接的密码；未保存返回空串。
+// 解密失败（key 缺失 / 密文损坏 / 跨用户拷贝）会带错误返回。
+func (a *App) GetConnectionPassword(id string) (string, error) {
+	return a.cfg.getPassword(id)
+}
+
+// SaveConnection 新建或覆盖。input.id 为空时分配新 id。
+// savePassword=false 时密码不入文件，下次需要用户手动填。
+func (a *App) SaveConnection(input SaveConnectionInput) (SavedConnection, error) {
+	return a.cfg.saveConnection(input)
+}
+
+// DeleteConnection 按 id 删除（幂等）。
+func (a *App) DeleteConnection(id string) error {
+	return a.cfg.deleteConnection(id)
 }
 
 // escapeJSONString 仅处理 envelope error 字段中可能出现的控制字符与引号。

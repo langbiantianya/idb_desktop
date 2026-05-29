@@ -7,6 +7,7 @@ import { writable } from 'svelte/store';
 
 /** @type {ConnectionConfig} */
 export const defaultConnection = {
+	name: '',
 	driver: 'Mysql',
 	host: '127.0.0.1',
 	port: 3306,
