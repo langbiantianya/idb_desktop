@@ -548,10 +548,7 @@
 									}
 								}
 							}}
-							oncontextmenu={(e) => {
-								onSelectSchema(s);
-								openSchemaMenu(e, s);
-							}}
+							oncontextmenu={(e) => openSchemaMenu(e, s)}
 						>
 							<span
 								class="inline-block w-3 text-center text-[10px] transition-transform"
