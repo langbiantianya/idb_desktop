@@ -8,6 +8,7 @@
 		executeSql
 	} from '$lib/api';
 	import { asDataPage, asColumnList, asSqlResult, isLob, renderCell } from '$lib/api/normalize.js';
+	import { formatTemporal, temporalKind } from '$lib/temporal.js';
 	import { ok, err } from '$lib/stores/toasts.js';
 	import { isReadOnlySchema } from '$lib/readonly.js';
 	import ContextMenu from './ContextMenu.svelte';
@@ -22,10 +23,11 @@
 	 * @property {ConnectionConfig} schemaConn
 	 * @property {string} schemaName
 	 * @property {string} tableName
+	 * @property {number} [reloadKey]   - 父级 bump 一次值来强制重拉数据 + 元数据
 	 */
 
 	/** @type {Props} */
-	let { schemaConn, schemaName, tableName } = $props();
+	let { schemaConn, schemaName, tableName, reloadKey = 0 } = $props();
 
 	const PAGE_SIZE = 100;
 
@@ -46,6 +48,25 @@
 
 	let pkColumns = $derived(columnMeta.filter((c) => c.isPrimaryKey).map((c) => c.name));
 	let readOnly = $derived(isReadOnlySchema(schemaConn, schemaName));
+	/** @type {Record<string, import('$lib/api').ColumnMeta>} */
+	let metaByName = $derived.by(() => {
+		const m = {};
+		for (const c of columnMeta) m[c.name] = c;
+		return m;
+	});
+
+	/**
+	 * 渲染单元格——时间类按列声明精度整形，其他走默认。
+	 * @param {string} col @param {unknown} v
+	 */
+	function renderCellWithType(col, v) {
+		const meta = metaByName[col];
+		if (meta && temporalKind(meta.type)) {
+			const t = formatTemporal(v, meta);
+			if (t !== null) return t;
+		}
+		return renderCell(v);
+	}
 
 	function openCellCtx(e, row, col, value) {
 		e.preventDefault();
@@ -62,6 +83,7 @@
 	$effect(() => {
 		schemaConn;
 		tableName;
+		reloadKey;
 		page = 1;
 		void load();
 		void loadMeta();
@@ -345,7 +367,7 @@
 												{row[col]}
 											</button>
 										{:else}
-											{renderCell(row[col])}
+											{renderCellWithType(col, row[col])}
 										{/if}
 									</td>
 								{/each}
@@ -386,6 +408,7 @@
 	open={inserting}
 	title={`插入 · ${tableName}`}
 	columns={columnMeta.length > 0 ? columnMeta.map((c) => c.name) : columns}
+	{columnMeta}
 	initial={{}}
 	pending={actionPending}
 	onSubmit={doInsert}
@@ -396,6 +419,7 @@
 	open={editing !== null}
 	title={`编辑 · ${tableName}`}
 	columns={columnMeta.length > 0 ? columnMeta.map((c) => c.name) : columns}
+	{columnMeta}
 	initial={editing ?? {}}
 	editing
 	{pkColumns}

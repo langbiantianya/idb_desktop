@@ -269,6 +269,24 @@
 		await loadTables(schema);
 	}
 
+	/**
+	 * 强制刷新某张表的列子节点（仅当该子节点已经展开 / 已缓存时；否则跳过）。
+	 * @param {string} schema @param {string} table
+	 */
+	export async function refreshColumnsOf(schema, table) {
+		const key = `${schema}.${table}`;
+		// 不论是否已展开，都丢弃缓存；下次展开时会重新拉
+		if (columnsByTable[key]) {
+			const next = { ...columnsByTable };
+			delete next[key];
+			columnsByTable = next;
+		}
+		// 已展开则立即重拉
+		if (tableExpanded[key]) {
+			await loadColumns(schema, table);
+		}
+	}
+
 	function openSchemaMenu(e, schema) {
 		e.preventDefault();
 		menu = { x: e.clientX, y: e.clientY, kind: 'schema', schema };
@@ -395,7 +413,7 @@
 			const ro = isReadOnlySchema(baseConn, menu.schema);
 			const items = [
 				{ label: '打开数据', icon: '▦', onClick: () => menuOpenTable(menu.schema, menu.table) },
-				{ label: '查看表字段', icon: '⊞', onClick: () => menuInspectTable(menu.schema, menu.table) },
+				{ label: '修改表结构', icon: '⊞', onClick: () => menuInspectTable(menu.schema, menu.table) },
 				{ label: '刷新表列表', icon: '↻', onClick: () => menuRefreshSchema(menu.schema) },
 				{ label: '复制引用', icon: '⧉', onClick: () => menuCopyTableRef(menu.schema, menu.table) }
 			];
@@ -673,7 +691,7 @@
 													type="button"
 													class="md-icon-btn opacity-0 group-hover/row:opacity-100"
 													style="width: 1.125rem; height: 1.125rem;"
-													title="列结构"
+													title="修改表结构"
 													onclick={(e) => {
 														e.stopPropagation();
 														onInspectTable?.(s, t.name);

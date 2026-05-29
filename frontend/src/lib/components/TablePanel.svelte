@@ -8,20 +8,31 @@
 	import ContextMenu from './ContextMenu.svelte';
 
 	/**
-	 * 表结构面板：查看 + 增 / 删 / 改列。
+	 * 表结构编辑器：所有改动先落到本地 draft，点"保存"才统一推送到引擎。
+	 * 这样多个改动可以在同一个工作流里编排（先 drop 再 modify 最后 add），
+	 * 用户也可以在保存前撤销任意一步。
 	 *
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
 	 * @typedef {import('$lib/api').ColumnMeta} ColumnMeta
 	 * @typedef {import('$lib/api').ColumnDef} ColumnDef
+	 *
+	 * @typedef {{
+	 *   key: string;
+	 *   state: 'unchanged' | 'modified' | 'added' | 'dropped';
+	 *   original: ColumnMeta | null;
+	 *   draft: { name: string; type: string; size?: number; nullable: boolean; defaultValue?: string };
+	 * }} EntryDraft
+	 *
 	 * @typedef {Object} Props
 	 * @property {boolean} open
 	 * @property {ConnectionConfig | null} schemaConn
 	 * @property {string} tableName
 	 * @property {() => void} onClose
+	 * @property {(schema: string, table: string) => void} [onSaved]
 	 */
 
 	/** @type {Props} */
-	let { open, schemaConn, tableName, onClose } = $props();
+	let { open, schemaConn, tableName, onClose, onSaved } = $props();
 
 	const TYPE_PRESETS = [
 		'INT', 'BIGINT', 'SMALLINT',
@@ -31,27 +42,225 @@
 		'BOOLEAN', 'JSON', 'BLOB'
 	];
 
-	let columns = $state(/** @type {ColumnMeta[]} */ ([]));
+	let entries = $state(/** @type {EntryDraft[]} */ ([]));
 	let pending = $state(false);
+	let saving = $state(false);
+	let confirmClose = $state(false);
+	let rowCtx = $state(/** @type {{ x: number; y: number; entry: EntryDraft } | null} */ (null));
 
-	let adding = $state(false);
-	/** @type {ColumnDef} */
-	let addDraft = $state({ name: '', type: 'VARCHAR', size: 255, nullable: true });
-	let addPending = $state(false);
+	let readOnly = $derived(isReadOnlySchema(schemaConn, schemaConn?.database));
+	let dirty = $derived(entries.some((e) => e.state !== 'unchanged'));
+	let canSave = $derived(
+		dirty &&
+			entries.every(
+				(e) => e.state !== 'added' || (e.draft.name.trim() !== '' && e.draft.type.trim() !== '')
+			)
+	);
 
-	let editing = $state(/** @type {ColumnMeta | null} */ (null));
-	/** @type {ColumnDef} */
-	let editDraft = $state({ name: '', type: '' });
-	let editPending = $state(false);
+	$effect(() => {
+		if (!open || !schemaConn || !tableName) return;
+		void load();
+	});
 
-	let confirmDrop = $state(/** @type {string | null} */ (null));
-	let dropPending = $state(false);
+	function newKey(prefix) {
+		return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+	}
 
-	let rowCtx = $state(/** @type {{ x: number; y: number; col: ColumnMeta } | null} */ (null));
+	/** @param {ColumnMeta} c */
+	function metaToDraft(c) {
+		return {
+			name: c.name,
+			type: c.type ?? '',
+			size: c.size,
+			nullable: c.nullable !== false,
+			defaultValue: c.defaultValue == null ? undefined : String(c.defaultValue)
+		};
+	}
 
-	function openRowCtx(e, col) {
+	async function load() {
+		if (!schemaConn) return;
+		pending = true;
+		try {
+			const resp = await listColumns(schemaConn, tableName);
+			if (!resp.success) {
+				err(resp.error ?? '加载列失败');
+				entries = [];
+				return;
+			}
+			const cols = asColumnList(resp.data);
+			entries = cols.map((c) => ({
+				key: c.name,
+				state: 'unchanged',
+				original: c,
+				draft: metaToDraft(c)
+			}));
+		} finally {
+			pending = false;
+		}
+	}
+
+	/**
+	 * 比较 draft 与 original 是否有实质差异（忽略未填的可选字段差）。
+	 * @param {ColumnMeta} orig
+	 * @param {EntryDraft['draft']} d
+	 */
+	function draftDiffers(orig, d) {
+		if ((orig.type ?? '').trim().toUpperCase() !== d.type.trim().toUpperCase()) return true;
+		const oSize = typeof orig.size === 'number' ? orig.size : undefined;
+		const dSize = typeof d.size === 'number' ? d.size : undefined;
+		if (oSize !== dSize) return true;
+		if ((orig.nullable !== false) !== d.nullable) return true;
+		const oDef = orig.defaultValue == null ? '' : String(orig.defaultValue);
+		const dDef = d.defaultValue == null ? '' : String(d.defaultValue);
+		if (oDef !== dDef) return true;
+		return false;
+	}
+
+	/** @param {number} idx @param {Partial<EntryDraft['draft']>} patch */
+	function patchDraft(idx, patch) {
+		const e = entries[idx];
+		if (!e) return;
+		// 直接在 $state 代理上原地改：proxy 会触发反应式更新，
+		// 避免 .map() 重建数组 + keyed each 的 DOM 复用导致 input 控件 value/oninput 失序。
+		Object.assign(e.draft, patch);
+		if (e.state !== 'added' && e.state !== 'dropped') {
+			e.state = e.original && draftDiffers(e.original, e.draft) ? 'modified' : 'unchanged';
+		}
+	}
+
+	function addColumn() {
+		entries.push({
+			key: newKey('new'),
+			state: 'added',
+			original: null,
+			draft: { name: '', type: 'VARCHAR', size: 255, nullable: true }
+		});
+	}
+
+	/** @param {number} idx */
+	function markDrop(idx) {
+		const e = entries[idx];
+		if (!e) return;
+		if (e.state === 'added') {
+			entries.splice(idx, 1);
+			return;
+		}
+		e.state = 'dropped';
+	}
+
+	/** @param {number} idx */
+	function undoDrop(idx) {
+		const e = entries[idx];
+		if (!e || !e.original) return;
+		e.state = draftDiffers(e.original, e.draft) ? 'modified' : 'unchanged';
+	}
+
+	/** @param {EntryDraft['draft']} d */
+	function buildColumnDef(d) {
+		/** @type {ColumnDef} */
+		const col = { name: d.name.trim(), type: d.type.trim().toUpperCase() };
+		if (typeof d.size === 'number' && d.size > 0) col.size = d.size;
+		col.nullable = !!d.nullable;
+		if (d.defaultValue !== undefined && d.defaultValue !== '') col.defaultValue = d.defaultValue;
+		return col;
+	}
+
+	/**
+	 * 校验：新增的列必须有名字和类型；不能与现有未删除列重名；类型不能为空。
+	 */
+	function validate() {
+		const seen = new Map();
+		for (const e of entries) {
+			if (e.state === 'dropped') continue;
+			const name = e.draft.name.trim();
+			if (!name) {
+				return `存在未填列名的列`;
+			}
+			if (!e.draft.type.trim()) {
+				return `列 ${name} 类型不能为空`;
+			}
+			const lower = name.toLowerCase();
+			if (seen.has(lower)) {
+				return `列名 ${name} 重复`;
+			}
+			seen.set(lower, true);
+		}
+		return null;
+	}
+
+	async function save() {
+		if (!schemaConn || readOnly || !canSave) return;
+		const v = validate();
+		if (v) {
+			err(v);
+			return;
+		}
+
+		saving = true;
+		try {
+			// 顺序：先删（释放名字 / 索引位）→ 再改（已有列原地修改）→ 最后加（追加到尾部）。
+			const drops = entries.filter((e) => e.state === 'dropped' && e.original);
+			const mods = entries.filter((e) => e.state === 'modified' && e.original);
+			const adds = entries.filter((e) => e.state === 'added');
+
+			for (const e of drops) {
+				const r = await dropTableColumn(schemaConn, tableName, /** @type {ColumnMeta} */ (e.original).name);
+				if (!r.success) {
+					err(r.error ?? `删除列 ${/** @type {ColumnMeta} */ (e.original).name} 失败`);
+					await load();
+					return;
+				}
+			}
+			for (const e of mods) {
+				const col = buildColumnDef(e.draft);
+				// 不支持改名：定位用原始名
+				col.name = /** @type {ColumnMeta} */ (e.original).name;
+				const r = await modifyTableColumn(schemaConn, tableName, col);
+				if (!r.success) {
+					err(r.error ?? `修改列 ${col.name} 失败`);
+					await load();
+					return;
+				}
+			}
+			for (const e of adds) {
+				const col = buildColumnDef(e.draft);
+				const r = await addTableColumn(schemaConn, tableName, col);
+				if (!r.success) {
+					err(r.error ?? `添加列 ${col.name} 失败`);
+					await load();
+					return;
+				}
+			}
+
+			ok(
+				`已保存：${drops.length ? `删 ${drops.length} ` : ''}${mods.length ? `改 ${mods.length} ` : ''}${adds.length ? `加 ${adds.length}` : ''}`.trim() ||
+					'已保存'
+			);
+			await load();
+			if (schemaConn.database) onSaved?.(schemaConn.database, tableName);
+		} finally {
+			saving = false;
+		}
+	}
+
+	function tryClose() {
+		if (saving) return;
+		if (dirty) {
+			confirmClose = true;
+			return;
+		}
+		onClose();
+	}
+
+	function discardAndClose() {
+		confirmClose = false;
+		entries = [];
+		onClose();
+	}
+
+	function openRowCtx(e, entry) {
 		e.preventDefault();
-		rowCtx = { x: e.clientX, y: e.clientY, col };
+		rowCtx = { x: e.clientX, y: e.clientY, entry };
 	}
 
 	async function copyText2(text) {
@@ -63,159 +272,42 @@
 		}
 	}
 
-	let readOnly = $derived(isReadOnlySchema(schemaConn, schemaConn?.database));
-
-	$effect(() => {
-		if (!open || !schemaConn || !tableName) return;
-		void load();
-	});
-
-	async function load() {
-		if (!schemaConn) return;
-		pending = true;
-		columns = [];
-		try {
-			const resp = await listColumns(schemaConn, tableName);
-			if (!resp.success) {
-				err(resp.error ?? '加载列失败');
-				return;
-			}
-			columns = asColumnList(resp.data);
-		} finally {
-			pending = false;
-		}
-	}
-
-	function openAdd() {
-		addDraft = { name: '', type: 'VARCHAR', size: 255, nullable: true };
-		adding = true;
-	}
-
-	async function submitAdd() {
-		if (!schemaConn) return;
-		if (readOnly) {
-			err(`${schemaConn.database} 是 MySQL 系统库，禁止添加列`);
-			adding = false;
-			return;
-		}
-		const n = addDraft.name.trim();
-		const t = addDraft.type.trim().toUpperCase();
-		if (!n) {
-			err('列名不能为空');
-			return;
-		}
-		if (!t) {
-			err('类型不能为空');
-			return;
-		}
-		/** @type {ColumnDef} */
-		const col = { name: n, type: t };
-		if (typeof addDraft.size === 'number' && addDraft.size > 0) col.size = addDraft.size;
-		if (addDraft.nullable !== undefined) col.nullable = addDraft.nullable;
-		if (addDraft.defaultValue) col.defaultValue = addDraft.defaultValue;
-		addPending = true;
-		try {
-			const resp = await addTableColumn(schemaConn, tableName, col);
-			if (!resp.success) {
-				err(resp.error ?? '添加列失败');
-				return;
-			}
-			ok(`已添加列 ${n}`);
-			adding = false;
-			await load();
-		} finally {
-			addPending = false;
-		}
-	}
-
-	/** @param {ColumnMeta} c */
-	function openEdit(c) {
-		editing = c;
-		editDraft = {
-			name: c.name,
-			type: c.type,
-			size: c.size,
-			nullable: c.nullable !== false,
-			defaultValue: c.defaultValue == null ? undefined : String(c.defaultValue)
-		};
-	}
-
-	async function submitEdit() {
-		if (!schemaConn || !editing) return;
-		if (readOnly) {
-			err(`${schemaConn.database} 是 MySQL 系统库，禁止修改列`);
-			editing = null;
-			return;
-		}
-		const t = editDraft.type.trim().toUpperCase();
-		if (!t) {
-			err('类型不能为空');
-			return;
-		}
-		/** @type {ColumnDef} */
-		const col = { name: editing.name, type: t };
-		if (typeof editDraft.size === 'number' && editDraft.size > 0) col.size = editDraft.size;
-		if (editDraft.nullable !== undefined) col.nullable = editDraft.nullable;
-		if (editDraft.defaultValue !== undefined && editDraft.defaultValue !== '') {
-			col.defaultValue = editDraft.defaultValue;
-		}
-		editPending = true;
-		try {
-			const resp = await modifyTableColumn(schemaConn, tableName, col);
-			if (!resp.success) {
-				err(resp.error ?? '修改列失败');
-				return;
-			}
-			ok(`已修改列 ${editing.name}`);
-			editing = null;
-			await load();
-		} finally {
-			editPending = false;
-		}
-	}
-
-	async function doDrop() {
-		if (!schemaConn || !confirmDrop) return;
-		if (readOnly) {
-			err(`${schemaConn.database} 是 MySQL 系统库，禁止删除列`);
-			confirmDrop = null;
-			return;
-		}
-		dropPending = true;
-		try {
-			const resp = await dropTableColumn(schemaConn, tableName, confirmDrop);
-			if (!resp.success) {
-				err(resp.error ?? '删除列失败');
-				return;
-			}
-			ok(`已删除列 ${confirmDrop}`);
-			confirmDrop = null;
-			await load();
-		} finally {
-			dropPending = false;
+	/** @param {EntryDraft['state']} s */
+	function stateChip(s) {
+		switch (s) {
+			case 'added':
+				return { label: '新增', bg: 'var(--md-primary-container)', fg: 'var(--md-on-primary-container)' };
+			case 'modified':
+				return { label: '修改', bg: 'var(--md-tertiary-container)', fg: 'var(--md-on-tertiary-container)' };
+			case 'dropped':
+				return { label: '删除', bg: 'var(--md-error-container, #F9DEDC)', fg: 'var(--md-on-error-container, #410E0B)' };
+			default:
+				return null;
 		}
 	}
 </script>
 
-<Modal {open} title={`列结构 · ${tableName}`} size="lg" {onClose}>
+<Modal {open} title={`修改表结构 · ${tableName}`} size="lg" onClose={tryClose}>
 	<div class="flex items-center justify-between pb-2">
 		<span class="text-xs" style="color: var(--md-on-surface-variant);">
-			共 {columns.length} 列
+			共 {entries.filter((e) => e.state !== 'dropped').length} 列{#if dirty}<span class="ml-2">·</span>
+				<span class="ml-1" style="color: var(--md-tertiary);">未保存改动</span>
+			{/if}
 			{#if pending}<span class="ml-2 animate-pulse">…</span>{/if}
 		</span>
 		<div class="flex items-center gap-1">
-			<button class="md-icon-btn" title="刷新" onclick={load} disabled={pending}>↻</button>
+			<button class="md-icon-btn" title="重新加载（丢弃未保存改动）" onclick={load} disabled={pending || saving}>↻</button>
 			{#if readOnly}
 				<span class="md-chip" title="MySQL 系统库，只读">RO · 只读</span>
 			{:else}
-				<button class="md-btn-text" onclick={openAdd} disabled={pending}>+ 添加列</button>
+				<button class="md-btn-text" onclick={addColumn} disabled={pending || saving}>+ 添加列</button>
 			{/if}
 		</div>
 	</div>
 
-	{#if pending && columns.length === 0}
+	{#if pending && entries.length === 0}
 		<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">加载中…</p>
-	{:else if columns.length === 0}
+	{:else if entries.length === 0}
 		<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">无列信息</p>
 	{:else}
 		<div
@@ -228,65 +320,126 @@
 					style="background: var(--md-surface-container); color: var(--md-on-surface-variant);"
 				>
 					<tr>
-						<th class="px-3 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant);">列</th>
-						<th class="px-3 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant);">类型</th>
-						<th class="px-3 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant);">长度</th>
-						<th class="px-3 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant);">可空</th>
-						<th class="px-3 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant);">主键</th>
-						<th class="px-3 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant);">默认值</th>
-						<th class="px-3 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant); width: 8rem;"></th>
+						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant); width: 4.5rem;">状态</th>
+						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant);">列</th>
+						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant);">类型</th>
+						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant); width: 5rem;">长度</th>
+						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant); width: 3.5rem;">可空</th>
+						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant); width: 3rem;">主键</th>
+						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant);">默认值</th>
+						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant); width: 4rem;"></th>
 					</tr>
 				</thead>
 				<tbody>
-					{#each columns as c, i (c.name)}
+					{#each entries as e, i (e.key)}
+						{@const chip = stateChip(e.state)}
+						{@const droppedRow = e.state === 'dropped'}
+						{@const editable = !readOnly && !droppedRow}
+						{@const nameLocked = !!e.original}
 						<tr
 							style:background={i % 2 === 0 ? 'transparent' : 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}
-							oncontextmenu={(e) => openRowCtx(e, c)}
+							style:opacity={droppedRow ? 0.55 : 1}
+							style:text-decoration={droppedRow ? 'line-through' : 'none'}
+							oncontextmenu={(ev) => openRowCtx(ev, e)}
 						>
-							<td class="px-3 py-1.5 font-mono" style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);">
-								{c.name}
+							<td class="px-2 py-1.5" style="border-bottom: 1px solid var(--md-outline-variant);">
+								{#if chip}
+									<span
+										class="rounded-sm px-1.5 py-0.5 text-[10px] font-medium"
+										style:background={chip.bg}
+										style:color={chip.fg}
+									>{chip.label}</span>
+								{:else}
+									<span style="color: var(--md-on-surface-variant);">—</span>
+								{/if}
 							</td>
-							<td class="px-3 py-1.5 font-mono" style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface-variant);">
-								{c.type}
+							<td class="px-2 py-1 font-mono" style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);">
+								<input
+									class="md-input font-mono"
+									style="font-size: 0.75rem; padding: 0.25rem 0.375rem;"
+									type="text"
+									value={e.draft.name}
+									disabled={!editable || nameLocked}
+									oninput={(ev) => patchDraft(i, { name: ev.currentTarget.value })}
+									title={nameLocked ? '不支持改名' : ''}
+								/>
 							</td>
-							<td class="px-3 py-1.5" style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface-variant);">
-								{c.size ?? '—'}
+							<td class="px-2 py-1 font-mono" style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface-variant);">
+								<input
+									class="md-input font-mono"
+									style="font-size: 0.75rem; padding: 0.25rem 0.375rem;"
+									type="text"
+									list="md-col-type-presets"
+									value={e.draft.type}
+									disabled={!editable}
+									oninput={(ev) => patchDraft(i, { type: ev.currentTarget.value })}
+								/>
 							</td>
-							<td class="px-3 py-1.5" style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface-variant);">
-								{c.nullable ? '是' : '否'}
+							<td class="px-2 py-1" style="border-bottom: 1px solid var(--md-outline-variant);">
+								<input
+									class="md-input"
+									style="font-size: 0.75rem; padding: 0.25rem 0.375rem;"
+									type="number"
+									min="0"
+									value={e.draft.size ?? ''}
+									disabled={!editable}
+									oninput={(ev) => {
+										const n = Number(ev.currentTarget.value);
+										patchDraft(i, { size: Number.isFinite(n) && n > 0 ? n : undefined });
+									}}
+								/>
 							</td>
-							<td class="px-3 py-1.5" style="border-bottom: 1px solid var(--md-outline-variant);">
-								{#if c.isPrimaryKey}
+							<td class="px-2 py-1.5 text-center" style="border-bottom: 1px solid var(--md-outline-variant);">
+								<input
+									type="checkbox"
+									checked={e.draft.nullable}
+									disabled={!editable}
+									onchange={(ev) => patchDraft(i, { nullable: ev.currentTarget.checked })}
+								/>
+							</td>
+							<td class="px-2 py-1.5" style="border-bottom: 1px solid var(--md-outline-variant);">
+								{#if e.original?.isPrimaryKey}
 									<span class="md-chip-pk">PK</span>
 								{:else}
 									<span style="color: var(--md-on-surface-variant);">—</span>
 								{/if}
 							</td>
-							<td class="px-3 py-1.5 font-mono" style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface-variant);">
-								{c.defaultValue == null ? '—' : String(c.defaultValue)}
+							<td class="px-2 py-1 font-mono" style="border-bottom: 1px solid var(--md-outline-variant);">
+								<input
+									class="md-input font-mono"
+									style="font-size: 0.75rem; padding: 0.25rem 0.375rem;"
+									type="text"
+									value={e.draft.defaultValue ?? ''}
+									disabled={!editable}
+									oninput={(ev) =>
+										patchDraft(i, {
+											defaultValue: ev.currentTarget.value === '' ? undefined : ev.currentTarget.value
+										})}
+								/>
 							</td>
-							<td class="px-3 py-1" style="border-bottom: 1px solid var(--md-outline-variant);">
+							<td class="px-2 py-1" style="border-bottom: 1px solid var(--md-outline-variant);">
 								{#if !readOnly}
-									<div class="flex items-center justify-end gap-1">
+									{#if droppedRow}
 										<button
 											type="button"
 											class="md-btn-text"
-											style="padding: 0.125rem 0.5rem;"
-											onclick={() => openEdit(c)}
+											style="padding: 0.125rem 0.375rem; font-size: 0.6875rem;"
+											onclick={() => undoDrop(i)}
 										>
-											修改
+											撤销
 										</button>
+									{:else}
 										<button
 											type="button"
 											class="md-btn-text"
-											style="padding: 0.125rem 0.5rem; color: var(--md-error);"
-											onclick={() => (confirmDrop = c.name)}
-											disabled={c.isPrimaryKey === true}
-											title={c.isPrimaryKey ? '主键列不可在此处删除' : '删除列'}
+											style="padding: 0.125rem 0.375rem; color: var(--md-error); font-size: 0.6875rem;"
+											onclick={() => markDrop(i)}
+											disabled={e.original?.isPrimaryKey === true}
+											title={e.original?.isPrimaryKey ? '主键列不可在此处删除' : '删除列'}
 										>
 											删除
 										</button>
-									</div>
+									{/if}
 								{/if}
 							</td>
 						</tr>
@@ -301,158 +454,49 @@
 			<option value={t}></option>
 		{/each}
 	</datalist>
-</Modal>
-
-<!-- 添加列 -->
-<Modal open={adding} title={`添加列 · ${tableName}`} size="md" onClose={() => (adding = false)}>
-	<div class="grid grid-cols-2 gap-3 text-sm">
-		<label class="col-span-2 flex flex-col gap-1">
-			<span style="color: var(--md-on-surface-variant);">列名</span>
-			<input class="md-input font-mono" type="text" bind:value={addDraft.name} placeholder="例如 description" />
-		</label>
-		<label class="flex flex-col gap-1">
-			<span style="color: var(--md-on-surface-variant);">类型</span>
-			<input
-				class="md-input font-mono"
-				type="text"
-				list="md-col-type-presets"
-				bind:value={addDraft.type}
-			/>
-		</label>
-		<label class="flex flex-col gap-1">
-			<span style="color: var(--md-on-surface-variant);">长度</span>
-			<input
-				class="md-input"
-				type="number"
-				min="0"
-				value={addDraft.size ?? ''}
-				oninput={(e) => {
-					const n = Number(e.currentTarget.value);
-					addDraft = { ...addDraft, size: Number.isFinite(n) && n > 0 ? n : undefined };
-				}}
-			/>
-		</label>
-		<label class="flex items-center gap-2">
-			<input
-				type="checkbox"
-				checked={addDraft.nullable !== false}
-				onchange={(e) => (addDraft = { ...addDraft, nullable: e.currentTarget.checked })}
-			/>
-			<span style="color: var(--md-on-surface);">可空</span>
-		</label>
-		<label class="flex flex-col gap-1">
-			<span style="color: var(--md-on-surface-variant);">默认值</span>
-			<input
-				class="md-input font-mono"
-				type="text"
-				value={addDraft.defaultValue ?? ''}
-				oninput={(e) =>
-					(addDraft = {
-						...addDraft,
-						defaultValue: e.currentTarget.value === '' ? undefined : e.currentTarget.value
-					})}
-			/>
-		</label>
-	</div>
 
 	{#snippet footer()}
-		<button class="md-btn-text" onclick={() => (adding = false)} disabled={addPending}>取消</button>
-		<button
-			class="md-btn-filled"
-			onclick={submitAdd}
-			disabled={addPending || !addDraft.name.trim() || !addDraft.type.trim()}
-		>
-			{addPending ? '提交中…' : '添加'}
+		<button class="md-btn-text" onclick={tryClose} disabled={saving}>
+			{dirty ? '取消' : '关闭'}
 		</button>
-	{/snippet}
-</Modal>
-
-<!-- 修改列 -->
-<Modal
-	open={editing !== null}
-	title={editing ? `修改列 · ${editing.name}` : ''}
-	size="md"
-	onClose={() => (editing = null)}
->
-	<div class="grid grid-cols-2 gap-3 text-sm">
-		<label class="col-span-2 flex flex-col gap-1">
-			<span style="color: var(--md-on-surface-variant);">列名（不可改）</span>
-			<input class="md-input font-mono" type="text" value={editDraft.name} disabled />
-		</label>
-		<label class="flex flex-col gap-1">
-			<span style="color: var(--md-on-surface-variant);">类型</span>
-			<input
-				class="md-input font-mono"
-				type="text"
-				list="md-col-type-presets"
-				bind:value={editDraft.type}
-			/>
-		</label>
-		<label class="flex flex-col gap-1">
-			<span style="color: var(--md-on-surface-variant);">长度</span>
-			<input
-				class="md-input"
-				type="number"
-				min="0"
-				value={editDraft.size ?? ''}
-				oninput={(e) => {
-					const n = Number(e.currentTarget.value);
-					editDraft = { ...editDraft, size: Number.isFinite(n) && n > 0 ? n : undefined };
-				}}
-			/>
-		</label>
-		<label class="flex items-center gap-2">
-			<input
-				type="checkbox"
-				checked={editDraft.nullable !== false}
-				onchange={(e) => (editDraft = { ...editDraft, nullable: e.currentTarget.checked })}
-			/>
-			<span style="color: var(--md-on-surface);">可空</span>
-		</label>
-		<label class="flex flex-col gap-1">
-			<span style="color: var(--md-on-surface-variant);">默认值</span>
-			<input
-				class="md-input font-mono"
-				type="text"
-				value={editDraft.defaultValue ?? ''}
-				oninput={(e) =>
-					(editDraft = {
-						...editDraft,
-						defaultValue: e.currentTarget.value === '' ? undefined : e.currentTarget.value
-					})}
-			/>
-		</label>
-	</div>
-
-	{#snippet footer()}
-		<button class="md-btn-text" onclick={() => (editing = null)} disabled={editPending}>取消</button>
-		<button class="md-btn-filled" onclick={submitEdit} disabled={editPending || !editDraft.type.trim()}>
-			{editPending ? '提交中…' : '保存'}
-		</button>
+		{#if !readOnly}
+			<button class="md-btn-filled" onclick={save} disabled={saving || pending || !canSave}>
+				{saving ? '保存中…' : '保存'}
+			</button>
+		{/if}
 	{/snippet}
 </Modal>
 
 <ConfirmDialog
-	open={confirmDrop !== null}
-	title="删除列"
-	message={`确认删除列 ${confirmDrop}？该列数据将一并丢失，且无法恢复。`}
-	confirmText="删除"
+	open={confirmClose}
+	title="放弃修改？"
+	message="存在未保存的改动，确认放弃并关闭？"
+	confirmText="放弃"
 	danger
-	pending={dropPending}
-	onConfirm={doDrop}
-	onCancel={() => (confirmDrop = null)}
+	onConfirm={discardAndClose}
+	onCancel={() => (confirmClose = false)}
 />
 
 <ContextMenu
-	open={rowCtx ? {
-		x: rowCtx.x,
-		y: rowCtx.y,
-		items: [
-			{ label: '复制列名', icon: '⧉', onClick: () => { if (rowCtx) copyText2(rowCtx.col.name); } },
-			{ label: '复制类型', icon: '⧉', onClick: () => { if (rowCtx) copyText2(rowCtx.col.type + (rowCtx.col.size ? `(${rowCtx.col.size})` : '')); } },
-			!readOnly ? { label: '修改列', icon: '✎', onClick: () => { if (rowCtx) openEdit(rowCtx.col); } } : null,
-			!readOnly && !rowCtx?.col.isPrimaryKey ? { label: '删除列', icon: '✕', danger: true, onClick: () => { if (rowCtx) confirmDrop = rowCtx.col.name; } } : null
-		].filter((i) => i !== null)
-	} : null}
+	open={rowCtx
+		? {
+				x: rowCtx.x,
+				y: rowCtx.y,
+				items: [
+					{ label: '复制列名', icon: '⧉', onClick: () => { if (rowCtx) copyText2(rowCtx.entry.draft.name); } },
+					{
+						label: '复制类型',
+						icon: '⧉',
+						onClick: () => {
+							if (rowCtx)
+								copyText2(
+									rowCtx.entry.draft.type +
+										(rowCtx.entry.draft.size ? `(${rowCtx.entry.draft.size})` : '')
+								);
+						}
+					}
+				]
+			}
+		: null}
 	onClose={() => (rowCtx = null)}
 />

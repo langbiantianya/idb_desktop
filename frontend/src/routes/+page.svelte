@@ -28,6 +28,13 @@
 	let inspectingSchema = $state('');
 	let creatingTableIn = $state('');
 
+	// 表结构改完后，bump 这个 map 里对应 schema:table 的版本号 → DataGrid 的 reloadKey 变化触发重拉。
+	let tableReloadVersion = $state(/** @type {Record<string, number>} */ ({}));
+
+	function reloadKeyFor(schema, table) {
+		return tableReloadVersion[`${schema}:${table}`] ?? 0;
+	}
+
 	/** @type {Sidebar | null} */
 	let sidebarRef = $state(null);
 
@@ -141,6 +148,14 @@
 		if (selectedSchema === schema && selectedTable === table) {
 			selectedTable = '';
 		}
+	}
+
+	async function onTableStructureSaved(schema, table) {
+		// 触发 DataGrid 重拉
+		const k = `${schema}:${table}`;
+		tableReloadVersion = { ...tableReloadVersion, [k]: (tableReloadVersion[k] ?? 0) + 1 };
+		// 让侧栏列子节点（已展开的）重新拉
+		await sidebarRef?.refreshColumnsOf(schema, table);
 	}
 </script>
 
@@ -272,7 +287,7 @@
 							{#if t.kind === 'data'}
 								{@const sc = schemaConnFor(t.schema)}
 								{#if sc}
-									<DataGrid schemaConn={sc} schemaName={t.schema} tableName={t.table} />
+									<DataGrid schemaConn={sc} schemaName={t.schema} tableName={t.table} reloadKey={reloadKeyFor(t.schema, t.table)} />
 								{/if}
 							{:else if t.kind === 'sql'}
 								{@const sc = schemaConnFor(t.schema)}
@@ -289,7 +304,7 @@
 		</div>
 	</div>
 
-	<!-- 列结构弹窗（可增 / 删 / 改列） -->
+	<!-- 修改表结构弹窗（draft + 保存批量提交） -->
 	<TablePanel
 		open={!!inspectingTable}
 		schemaConn={schemaConnFor(inspectingSchema)}
@@ -298,6 +313,7 @@
 			inspectingTable = '';
 			inspectingSchema = '';
 		}}
+		onSaved={onTableStructureSaved}
 	/>
 
 	<!-- 新建表 -->
