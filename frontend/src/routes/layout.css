@@ -210,7 +210,9 @@ textarea,
 [contenteditable='true'],
 .allow-select,
 pre,
-code {
+code,
+td,
+th {
 	-webkit-user-select: text;
 	user-select: text;
 }

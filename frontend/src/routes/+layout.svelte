@@ -12,5 +12,6 @@
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
+<svelte:window oncontextmenu={(e) => e.preventDefault()} />
 {@render children()}
 <ToastHost />

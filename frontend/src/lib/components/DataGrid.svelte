@@ -10,6 +10,7 @@
 	import { asDataPage, asColumnList, asSqlResult, isLob, renderCell } from '$lib/api/normalize.js';
 	import { ok, err } from '$lib/stores/toasts.js';
 	import { isReadOnlySchema } from '$lib/readonly.js';
+	import ContextMenu from './ContextMenu.svelte';
 	import Modal from './Modal.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import RowEditor from './RowEditor.svelte';
@@ -40,9 +41,23 @@
 	let actionPending = $state(false);
 
 	let lobView = $state(/** @type {{ column: string; row: Record<string, unknown>; loading: boolean; value: unknown } | null} */ (null));
+	let cellCtx = $state(/** @type {{ x: number; y: number; row: Record<string, unknown>; col: string; value: unknown; selection: string } | null} */ (null));
+	let headerCtx = $state(/** @type {{ x: number; y: number; col: string } | null} */ (null));
 
 	let pkColumns = $derived(columnMeta.filter((c) => c.isPrimaryKey).map((c) => c.name));
 	let readOnly = $derived(isReadOnlySchema(schemaConn, schemaName));
+
+	function openCellCtx(e, row, col, value) {
+		e.preventDefault();
+		// 右键时若已有选区（左键长按选中），把选中文本一并捕获，菜单优先把"复制"绑定到选区
+		const sel = (typeof window !== 'undefined' ? window.getSelection()?.toString() : '') ?? '';
+		cellCtx = { x: e.clientX, y: e.clientY, row, col, value, selection: sel };
+	}
+
+	function openHeaderCtx(e, col) {
+		e.preventDefault();
+		headerCtx = { x: e.clientX, y: e.clientY, col };
+	}
 
 	$effect(() => {
 		schemaConn;
@@ -187,6 +202,39 @@
 		if (typeof v === 'number' && Number.isFinite(v)) return String(v);
 		return `'${String(v).replaceAll("'", "''")}'`;
 	}
+
+	async function copyCell(col, value) {
+		try {
+			await navigator.clipboard.writeText(String(value ?? ''));
+			ok('已复制');
+		} catch (e) {
+			err(e instanceof Error ? e.message : '复制失败');
+		}
+	}
+
+	async function copyText(text, label = '已复制') {
+		try {
+			await navigator.clipboard.writeText(text);
+			ok(label);
+		} catch (e) {
+			err(e instanceof Error ? e.message : '复制失败');
+		}
+	}
+
+	/**
+	 * 行序列化为 TSV：tab 分列、列内换行 / tab 转义为字面量；NULL 转空串。
+	 * 这种格式粘进 Excel / 数据库客户端最自然。
+	 * @param {Record<string, unknown>} row
+	 */
+	function rowToTsv(row) {
+		return columns
+			.map((c) => {
+				const v = row[c];
+				if (v === null || v === undefined) return '';
+				return String(v).replace(/\t/g, ' ').replace(/\r?\n/g, ' ');
+			})
+			.join('\t');
+	}
 </script>
 
 <section class="flex h-full flex-col gap-3">
@@ -257,6 +305,7 @@
 								<th
 									class="px-3 py-2 font-medium whitespace-nowrap font-mono"
 									style="border-bottom: 1px solid var(--md-outline-variant);"
+									oncontextmenu={(e) => openHeaderCtx(e, col)}
 								>
 									{col}
 									{#if pkColumns.includes(col)}
@@ -284,6 +333,7 @@
 									<td
 										class="max-w-[24rem] truncate px-3 py-1.5 font-mono"
 										style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);"
+										oncontextmenu={(e) => openCellCtx(e, row, col, row[col])}
 									>
 										{#if isLob(row[col])}
 											<button
@@ -390,3 +440,32 @@
 		background: color-mix(in srgb, var(--md-on-surface) 6%, transparent) !important;
 	}
 </style>
+
+<ContextMenu
+	open={cellCtx ? {
+		x: cellCtx.x,
+		y: cellCtx.y,
+		items: [
+			cellCtx?.selection
+				? { label: '复制选中文本', icon: '⧉', onClick: () => { if (cellCtx) copyText(cellCtx.selection); } }
+				: { label: '复制', icon: '⧉', onClick: () => { if (cellCtx) copyCell(cellCtx.col, cellCtx.value); } },
+			{ label: '复制此行', icon: '⊟', onClick: () => { if (cellCtx) copyText(rowToTsv(cellCtx.row), '已复制此行'); } },
+			{ label: '复制列名', icon: '⧉', onClick: () => { if (cellCtx) copyCell(cellCtx.col, cellCtx.col); } },
+			cellCtx?.value !== null && cellCtx?.value !== undefined && isLob(cellCtx.value) ? { label: '查看完整内容', icon: '⊕', onClick: () => { if (cellCtx) openLob(cellCtx.row, cellCtx.col); } } : null,
+			!readOnly ? { label: '编辑此行', icon: '✎', onClick: () => { if (cellCtx) editing = cellCtx.row; } } : null,
+			!readOnly ? { label: '删除此行', icon: '✕', danger: true, onClick: () => { if (cellCtx) confirmDelete = cellCtx.row; } } : null
+		].filter((i) => i !== null)
+	} : null}
+	onClose={() => (cellCtx = null)}
+/>
+
+<ContextMenu
+	open={headerCtx ? {
+		x: headerCtx.x,
+		y: headerCtx.y,
+		items: [
+			{ label: '复制列名', icon: '⧉', onClick: () => { if (headerCtx) copyCell(headerCtx.col, headerCtx.col); } }
+		]
+	} : null}
+	onClose={() => (headerCtx = null)}
+/>

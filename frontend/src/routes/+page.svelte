@@ -216,6 +216,13 @@
 								style:color={activeTabId === t.id ? 'var(--md-on-surface)' : 'var(--md-on-surface-variant)'}
 								style="border-top: 2px solid {activeTabId === t.id ? 'var(--md-primary)' : 'transparent'}; border-radius: var(--md-radius-xs) var(--md-radius-xs) 0 0;"
 								onclick={() => (activeTabId = t.id)}
+								onmousedown={(e) => {
+									// 中键按下时浏览器可能会进入"自动滚动"模式，先抑制默认行为
+									if (e.button === 1) e.preventDefault();
+								}}
+								onauxclick={(e) => {
+									if (e.button === 1) closeTab(t.id, e);
+								}}
 								onkeydown={(e) => {
 									if (e.key === 'Enter' || e.key === ' ') {
 										e.preventDefault();

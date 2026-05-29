@@ -5,6 +5,7 @@
 	import { isReadOnlySchema } from '$lib/readonly.js';
 	import Modal from './Modal.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
+	import ContextMenu from './ContextMenu.svelte';
 
 	/**
 	 * 表结构面板：查看 + 增 / 删 / 改列。
@@ -45,6 +46,22 @@
 
 	let confirmDrop = $state(/** @type {string | null} */ (null));
 	let dropPending = $state(false);
+
+	let rowCtx = $state(/** @type {{ x: number; y: number; col: ColumnMeta } | null} */ (null));
+
+	function openRowCtx(e, col) {
+		e.preventDefault();
+		rowCtx = { x: e.clientX, y: e.clientY, col };
+	}
+
+	async function copyText2(text) {
+		try {
+			await navigator.clipboard.writeText(text);
+			ok('已复制');
+		} catch (e) {
+			err(e instanceof Error ? e.message : '复制失败');
+		}
+	}
 
 	let readOnly = $derived(isReadOnlySchema(schemaConn, schemaConn?.database));
 
@@ -222,7 +239,10 @@
 				</thead>
 				<tbody>
 					{#each columns as c, i (c.name)}
-						<tr style:background={i % 2 === 0 ? 'transparent' : 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}>
+						<tr
+							style:background={i % 2 === 0 ? 'transparent' : 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}
+							oncontextmenu={(e) => openRowCtx(e, c)}
+						>
 							<td class="px-3 py-1.5 font-mono" style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);">
 								{c.name}
 							</td>
@@ -421,4 +441,18 @@
 	pending={dropPending}
 	onConfirm={doDrop}
 	onCancel={() => (confirmDrop = null)}
+/>
+
+<ContextMenu
+	open={rowCtx ? {
+		x: rowCtx.x,
+		y: rowCtx.y,
+		items: [
+			{ label: '复制列名', icon: '⧉', onClick: () => { if (rowCtx) copyText2(rowCtx.col.name); } },
+			{ label: '复制类型', icon: '⧉', onClick: () => { if (rowCtx) copyText2(rowCtx.col.type + (rowCtx.col.size ? `(${rowCtx.col.size})` : '')); } },
+			!readOnly ? { label: '修改列', icon: '✎', onClick: () => { if (rowCtx) openEdit(rowCtx.col); } } : null,
+			!readOnly && !rowCtx?.col.isPrimaryKey ? { label: '删除列', icon: '✕', danger: true, onClick: () => { if (rowCtx) confirmDrop = rowCtx.col.name; } } : null
+		].filter((i) => i !== null)
+	} : null}
+	onClose={() => (rowCtx = null)}
 />

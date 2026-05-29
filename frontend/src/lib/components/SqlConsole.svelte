@@ -12,6 +12,7 @@
 	import { isReadOnlySchema, detectWriteKeyword } from '$lib/readonly.js';
 	import { format as formatSql } from 'sql-formatter';
 	import SqlEditor from './SqlEditor.svelte';
+	import ContextMenu from './ContextMenu.svelte';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
@@ -44,6 +45,27 @@
 
 	let results = $state(/** @type {StatementResult[]} */ ([]));
 	let activeResultIdx = $state(0);
+	let cellCtx = $state(/** @type {{ x: number; y: number; col: string; value: unknown } | null} */ (null));
+	let headerCtx = $state(/** @type {{ x: number; y: number; col: string } | null} */ (null));
+
+	function openCellCtx(e, col, value) {
+		e.preventDefault();
+		cellCtx = { x: e.clientX, y: e.clientY, col, value };
+	}
+
+	function openHeaderCtx(e, col) {
+		e.preventDefault();
+		headerCtx = { x: e.clientX, y: e.clientY, col };
+	}
+
+	async function copyValue(value) {
+		try {
+			await navigator.clipboard.writeText(String(value ?? ''));
+			ok('已复制');
+		} catch (e) {
+			err(e instanceof Error ? e.message : '复制失败');
+		}
+	}
 
 	// 元数据缓存：避免每次按键都去打引擎。schemaConn.database 是当前 tab 绑定的 schema，
 	// 跨 schema 的表 / 列懒加载，结果落到下面两个对象里。
@@ -475,6 +497,7 @@
 										<th
 											class="px-3 py-2 font-medium font-mono whitespace-nowrap"
 											style="border-bottom: 1px solid var(--md-outline-variant);"
+											oncontextmenu={(e) => openHeaderCtx(e, col)}
 										>
 											{col}
 										</th>
@@ -488,6 +511,7 @@
 											<td
 												class="max-w-[24rem] truncate px-3 py-1.5 font-mono"
 												style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);"
+												oncontextmenu={(e) => openCellCtx(e, col, row[col])}
 											>
 												{#if isLob(row[col])}
 													<span class="italic" style="color: var(--md-on-surface-variant);">{row[col]}</span>
@@ -509,6 +533,29 @@
 		{/if}
 	</div>
 </section>
+
+<ContextMenu
+	open={cellCtx ? {
+		x: cellCtx.x,
+		y: cellCtx.y,
+		items: [
+			{ label: '复制', icon: '⧉', onClick: () => { if (cellCtx) copyValue(cellCtx.value); } },
+			{ label: '复制列名', icon: '⧉', onClick: () => { if (cellCtx) copyValue(cellCtx.col); } }
+		]
+	} : null}
+	onClose={() => (cellCtx = null)}
+/>
+
+<ContextMenu
+	open={headerCtx ? {
+		x: headerCtx.x,
+		y: headerCtx.y,
+		items: [
+			{ label: '复制列名', icon: '⧉', onClick: () => { if (headerCtx) copyValue(headerCtx.col); } }
+		]
+	} : null}
+	onClose={() => (headerCtx = null)}
+/>
 
 <style>
 	.sql-tool-btn {

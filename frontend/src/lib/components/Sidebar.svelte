@@ -6,6 +6,7 @@
 	import { untrack } from 'svelte';
 	import Modal from './Modal.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
+	import ContextMenu from './ContextMenu.svelte';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
@@ -374,6 +375,42 @@
 		const f = filter.toLowerCase();
 		return all.filter((t) => t.name.toLowerCase().includes(f));
 	}
+
+	let menuItems = $derived.by(() => {
+		if (!menu) return [];
+		if (menu.kind === 'schema') {
+			const ro = isReadOnlySchema(baseConn, menu.schema);
+			const items = [
+				{ label: '刷新', icon: '↻', onClick: () => menuRefreshSchema(menu.schema) }
+			];
+			if (!ro) items.push({ label: '新建表', icon: '＋', onClick: () => menuCreateTable(menu.schema) });
+			items.push({ label: '复制引用', icon: '⧉', onClick: () => menuCopySchemaRef(menu.schema) });
+			if (!ro) {
+				items.push(null);
+				items.push({ label: '删除 schema', icon: '✕', danger: true, onClick: () => menuDeleteSchema(menu.schema) });
+			}
+			return items;
+		}
+		if (menu.kind === 'table') {
+			const ro = isReadOnlySchema(baseConn, menu.schema);
+			const items = [
+				{ label: '打开数据', icon: '▦', onClick: () => menuOpenTable(menu.schema, menu.table) },
+				{ label: '查看表字段', icon: '⊞', onClick: () => menuInspectTable(menu.schema, menu.table) },
+				{ label: '刷新表列表', icon: '↻', onClick: () => menuRefreshSchema(menu.schema) },
+				{ label: '复制引用', icon: '⧉', onClick: () => menuCopyTableRef(menu.schema, menu.table) }
+			];
+			if (!ro) {
+				items.push(null);
+				items.push({ label: '删除表', icon: '✕', danger: true, onClick: () => menuDeleteTable(menu.schema, menu.table) });
+			}
+			return items;
+		}
+		// column
+		return [
+			{ label: '复制列名', icon: '⧉', onClick: () => menuCopyColumnName(menu.column) },
+			{ label: '复制限定引用', icon: '⧉', onClick: () => menuCopyColumnRef(menu.schema, menu.table, menu.column) }
+		];
+	});
 </script>
 
 <aside
@@ -770,175 +807,9 @@
 />
 
 <!-- 右键菜单 -->
-{#if menu}
-	<button
-		type="button"
-		class="fixed inset-0 z-50 cursor-default"
-		style="background: transparent;"
-		aria-label="关闭菜单"
-		onclick={closeMenu}
-		oncontextmenu={(e) => {
-			e.preventDefault();
-			closeMenu();
-		}}
-	></button>
-	<div
-		role="menu"
-		class="fixed z-50 flex min-w-[10rem] flex-col py-1 text-xs"
-		style:left="{menu.x}px"
-		style:top="{menu.y}px"
-		style="background: var(--md-surface-container-high); color: var(--md-on-surface); border: 1px solid var(--md-outline-variant); border-radius: var(--md-radius-sm); box-shadow: var(--md-elev-2);"
-	>
-		{#if menu.kind === 'schema'}
-			{@const schema = menu.schema}
-			{@const ro = isReadOnlySchema(baseConn, schema)}
-			<button
-				type="button"
-				role="menuitem"
-				class="flex items-center gap-2 px-3 py-1.5 text-left transition"
-				onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-on-surface) 8%, transparent)')}
-				onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-				onclick={() => menuRefreshSchema(schema)}
-			>
-				<span style="color: var(--md-on-surface-variant); width: 1rem;">↻</span>
-				<span>刷新</span>
-			</button>
-			{#if !ro}
-				<button
-					type="button"
-					role="menuitem"
-					class="flex items-center gap-2 px-3 py-1.5 text-left transition"
-					onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-on-surface) 8%, transparent)')}
-					onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-					onclick={() => menuCreateTable(schema)}
-				>
-					<span style="color: var(--md-primary); width: 1rem;">＋</span>
-					<span>新建表</span>
-				</button>
-			{/if}
-			<button
-				type="button"
-				role="menuitem"
-				class="flex items-center gap-2 px-3 py-1.5 text-left transition"
-				onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-on-surface) 8%, transparent)')}
-				onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-				onclick={() => menuCopySchemaRef(schema)}
-			>
-				<span style="color: var(--md-on-surface-variant); width: 1rem;">⧉</span>
-				<span>复制引用</span>
-			</button>
-			{#if !ro}
-				<div style="height: 1px; background: var(--md-outline-variant); margin: 0.25rem 0;"></div>
-				<button
-					type="button"
-					role="menuitem"
-					class="flex items-center gap-2 px-3 py-1.5 text-left transition"
-					onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-error) 12%, transparent)')}
-					onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-					onclick={() => menuDeleteSchema(schema)}
-				>
-					<span style="color: var(--md-error); width: 1rem;">✕</span>
-					<span style="color: var(--md-error);">删除 schema</span>
-				</button>
-			{/if}
-		{:else if menu.kind === 'table'}
-			{@const schema = menu.schema}
-			{@const table = menu.table}
-			{@const ro = isReadOnlySchema(baseConn, schema)}
-			<button
-				type="button"
-				role="menuitem"
-				class="flex items-center gap-2 px-3 py-1.5 text-left transition"
-				onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-on-surface) 8%, transparent)')}
-				onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-				onclick={() => menuOpenTable(schema, table)}
-			>
-				<span style="color: var(--md-on-surface-variant); width: 1rem;">▦</span>
-				<span>打开数据</span>
-			</button>
-			<button
-				type="button"
-				role="menuitem"
-				class="flex items-center gap-2 px-3 py-1.5 text-left transition"
-				onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-on-surface) 8%, transparent)')}
-				onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-				onclick={() => menuInspectTable(schema, table)}
-			>
-				<span style="color: var(--md-on-surface-variant); width: 1rem;">⊞</span>
-				<span>查看表字段</span>
-			</button>
-			<button
-				type="button"
-				role="menuitem"
-				class="flex items-center gap-2 px-3 py-1.5 text-left transition"
-				onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-on-surface) 8%, transparent)')}
-				onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-				onclick={() => menuRefreshSchema(schema)}
-			>
-				<span style="color: var(--md-on-surface-variant); width: 1rem;">↻</span>
-				<span>刷新表列表</span>
-			</button>
-			<button
-				type="button"
-				role="menuitem"
-				class="flex items-center gap-2 px-3 py-1.5 text-left transition"
-				onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-on-surface) 8%, transparent)')}
-				onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-				onclick={() => menuCopyTableRef(schema, table)}
-			>
-				<span style="color: var(--md-on-surface-variant); width: 1rem;">⧉</span>
-				<span>复制引用</span>
-			</button>
-			{#if !ro}
-				<div style="height: 1px; background: var(--md-outline-variant); margin: 0.25rem 0;"></div>
-				<button
-					type="button"
-					role="menuitem"
-					class="flex items-center gap-2 px-3 py-1.5 text-left transition"
-					onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-error) 12%, transparent)')}
-					onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-					onclick={() => menuDeleteTable(schema, table)}
-				>
-					<span style="color: var(--md-error); width: 1rem;">✕</span>
-					<span style="color: var(--md-error);">删除表</span>
-				</button>
-			{/if}
-		{:else}
-			{@const schema = menu.schema}
-			{@const table = menu.table}
-			{@const column = menu.column}
-			<div class="px-3 py-1 text-[11px]" style="color: var(--md-on-surface-variant);">
-				<span class="font-mono">{column}</span>
-			</div>
-			<div style="height: 1px; background: var(--md-outline-variant); margin: 0.25rem 0;"></div>
-			<button
-				type="button"
-				role="menuitem"
-				class="flex items-center gap-2 px-3 py-1.5 text-left transition"
-				onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-on-surface) 8%, transparent)')}
-				onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-				onclick={() => menuCopyColumnName(column)}
-			>
-				<span style="color: var(--md-on-surface-variant); width: 1rem;">⧉</span>
-				<span>复制列名</span>
-			</button>
-			<button
-				type="button"
-				role="menuitem"
-				class="flex items-center gap-2 px-3 py-1.5 text-left transition"
-				onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--md-on-surface) 8%, transparent)')}
-				onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-				onclick={() => menuCopyColumnRef(schema, table, column)}
-			>
-				<span style="color: var(--md-on-surface-variant); width: 1rem;">⧉</span>
-				<span>复制限定引用</span>
-			</button>
-		{/if}
-	</div>
-{/if}
-
-<svelte:window
-	onkeydown={menu ? (e) => { if (e.key === 'Escape') closeMenu(); } : null}
+<ContextMenu
+	open={menu ? { x: menu.x, y: menu.y, items: menuItems } : null}
+	onClose={closeMenu}
 />
 
 <style>
