@@ -3,4 +3,5 @@
 /frontend/build
 /frontend/.svelte-kit
 /logs
-/build/bin/*
+/build/bin
+/build/**/tmp

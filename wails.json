@@ -9,5 +9,11 @@
   "author": {
     "name": "lbty",
     "email": "langbiantianya@outlook.com"
+  },
+  "info": {
+    "productName": "IDB Desktop",
+    "companyName": "IDB",
+    "productVersion": "0.1.0",
+    "copyright": "Copyright © 2026 IDB"
   }
 }

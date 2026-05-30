@@ -49,6 +49,8 @@ VIAddVersionKey "ProductName"     "${INFO_PRODUCTNAME}"
 ManifestDPIAware true
 
 !include "MUI.nsh"
+!include "nsDialogs.nsh"
+!include "LogicLib.nsh"
 
 !define MUI_ICON "..\icon.ico"
 !define MUI_UNICON "..\icon.ico"
@@ -59,6 +61,39 @@ ManifestDPIAware true
 !insertmacro MUI_PAGE_WELCOME # Welcome to the installer page.
 # !insertmacro MUI_PAGE_LICENSE "resources\eula.txt" # Adds a EULA page to the installer
 !insertmacro MUI_PAGE_DIRECTORY # In which folder install page.
+
+; Custom page: shortcut options
+Var HWND_DESKTOP_ICON
+Var HWND_STARTMENU_ICON
+Var CREATE_DESKTOP_ICON
+Var CREATE_STARTMENU_ICON
+
+Function ShortcutPage
+    !insertmacro MUI_HEADER_TEXT "Install Options" "Choose additional options."
+
+    nsDialogs::Create 1018
+    Pop $0
+
+    ${NSD_CreateCheckbox} 0 0u 100% 12u "Create Desktop shortcut"
+    Pop $HWND_DESKTOP_ICON
+    ${NSD_Check} $HWND_DESKTOP_ICON
+    StrCpy $CREATE_DESKTOP_ICON "1"
+
+    ${NSD_CreateCheckbox} 0 16u 100% 12u "Create Start Menu shortcut"
+    Pop $HWND_STARTMENU_ICON
+    ${NSD_Check} $HWND_STARTMENU_ICON
+    StrCpy $CREATE_STARTMENU_ICON "1"
+
+    nsDialogs::Show
+FunctionEnd
+
+Function ShortcutPageLeave
+    ${NSD_GetState} $HWND_DESKTOP_ICON $CREATE_DESKTOP_ICON
+    ${NSD_GetState} $HWND_STARTMENU_ICON $CREATE_STARTMENU_ICON
+FunctionEnd
+
+Page custom ShortcutPage ShortcutPageLeave
+
 !insertmacro MUI_PAGE_INSTFILES # Installing page.
 !insertmacro MUI_PAGE_FINISH # Finished installation page.
 
@@ -88,8 +123,18 @@ Section
 
     !insertmacro wails.files
 
-    CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
-    CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
+    ; Bundle engine: engine/bin/*.jar + engine/jre/**
+    SetOutPath "$INSTDIR\engine\bin"
+    File /r "..\..\..\engine\bin\*.*"
+    SetOutPath "$INSTDIR\engine\jre"
+    File /r "..\..\..\engine\jre\*.*"
+
+    ${If} $CREATE_STARTMENU_ICON == ${BST_CHECKED}
+        CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
+    ${EndIf}
+    ${If} $CREATE_DESKTOP_ICON == ${BST_CHECKED}
+        CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
+    ${EndIf}
 
     !insertmacro wails.associateFiles
     !insertmacro wails.associateCustomProtocols
