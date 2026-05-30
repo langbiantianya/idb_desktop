@@ -126,6 +126,7 @@ export const listColumns = (connection, tableName) =>
  * @property {boolean} [nullable]
  * @property {boolean} [isPrimaryKey]
  * @property {string} [defaultValue]
+ * @property {string} [newName]  - 字段改名时传新名供引擎做 RENAME COLUMN
  */
 
 /**
@@ -181,7 +182,7 @@ export const deleteTable = (connection, tableName) =>
  * @param {number} [page]
  * @param {number} [pageSize]
  */
-export const listData = (connection, tableName, page = 1, pageSize = 100) =>
+export const listData = (connection, tableName, page = 1, pageSize = 20) =>
 	invoke('DATA', 'LIST', connection, { tableName, page, pageSize });
 
 /**

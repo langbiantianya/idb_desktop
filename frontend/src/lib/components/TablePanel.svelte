@@ -105,6 +105,7 @@
 	 * @param {EntryDraft['draft']} d
 	 */
 	function draftDiffers(orig, d) {
+		if (orig.name.trim() !== d.name.trim()) return true;
 		if ((orig.type ?? '').trim().toUpperCase() !== d.type.trim().toUpperCase()) return true;
 		const oSize = typeof orig.size === 'number' ? orig.size : undefined;
 		const dSize = typeof d.size === 'number' ? d.size : undefined;
@@ -213,8 +214,12 @@
 			}
 			for (const e of mods) {
 				const col = buildColumnDef(e.draft);
-				// 不支持改名：定位用原始名
-				col.name = /** @type {ColumnMeta} */ (e.original).name;
+				const origName = /** @type {ColumnMeta} */ (e.original).name;
+				// column.name 始终为原始名（定位用），newName 携带新名供引擎做 RENAME
+				if (col.name !== origName) {
+					col.newName = col.name;
+				}
+				col.name = origName;
 				const r = await modifyTableColumn(schemaConn, tableName, col);
 				if (!r.success) {
 					err(r.error ?? `修改列 ${col.name} 失败`);
@@ -335,7 +340,6 @@
 						{@const chip = stateChip(e.state)}
 						{@const droppedRow = e.state === 'dropped'}
 						{@const editable = !readOnly && !droppedRow}
-						{@const nameLocked = !!e.original}
 						<tr
 							style:background={i % 2 === 0 ? 'transparent' : 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}
 							style:opacity={droppedRow ? 0.55 : 1}
@@ -359,9 +363,8 @@
 									style="font-size: 0.75rem; padding: 0.25rem 0.375rem;"
 									type="text"
 									value={e.draft.name}
-									disabled={!editable || nameLocked}
+									disabled={!editable}
 									oninput={(ev) => patchDraft(i, { name: ev.currentTarget.value })}
-									title={nameLocked ? '不支持改名' : ''}
 								/>
 							</td>
 							<td class="px-2 py-1 font-mono" style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface-variant);">

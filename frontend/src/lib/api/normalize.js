@@ -88,8 +88,9 @@ export function asColumnList(data) {
 
 /**
  * 数据页归一化：列名取所有行键的并集（保留出现顺序）。
+ * 同时提取 total / page / pageSize 分页元数据（引擎新协议）。
  * @param {unknown} data
- * @returns {{ rows: Record<string, unknown>[]; columns: string[] }}
+ * @returns {{ rows: Record<string, unknown>[]; columns: string[]; total: number | null; page: number | null; pageSize: number | null }}
  */
 export function asDataPage(data) {
 	const rawRows = pickArray(data, ['rows', 'list', 'data', 'items']);
@@ -97,7 +98,19 @@ export function asDataPage(data) {
 	for (const r of rawRows) {
 		if (r && typeof r === 'object') for (const k of Object.keys(r)) colSet.add(k);
 	}
-	return { rows: /** @type {Record<string, unknown>[]} */ (rawRows), columns: [...colSet] };
+
+	// 提取分页元数据（引擎可能返回 total / page / pageSize）
+	let total = null;
+	let pg = null;
+	let ps = null;
+	if (data && typeof data === 'object' && !Array.isArray(data)) {
+		const o = /** @type {Record<string, unknown>} */ (data);
+		if (typeof o.total === 'number') total = o.total;
+		if (typeof o.page === 'number') pg = o.page;
+		if (typeof o.pageSize === 'number') ps = o.pageSize;
+	}
+
+	return { rows: /** @type {Record<string, unknown>[]} */ (rawRows), columns: [...colSet], total, page: pg, pageSize: ps };
 }
 
 /**

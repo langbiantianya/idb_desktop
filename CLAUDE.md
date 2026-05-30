@@ -17,25 +17,57 @@
 
 ```
 idb_desktop/
-├── app.go                       # Wails App 结构与绑定方法（当前仅 Greet 桩）
+├── app.go                       # Wails App 结构体：生命周期钩子 + 5 个前端绑定方法
+├── config.go                    # 连接配置持久化（~/.config/idb/connections.json）
+├── crypto_windows.go            # Windows DPAPI 密码加密
+├── crypto_other.go              # 非 Windows 平台 AES-256-GCM 密码加密
+├── engine.go                    # JVM 子进程生命周期 + 基于 id 的异步并发管道协议
+├── engine_windows.go            # Windows 平台隐藏控制台子窗口
+├── engine_unix.go               # macOS / Linux 平台空实现
 ├── main.go                      # Wails 启动入口，//go:embed all:frontend/build
 ├── go.mod / go.sum              # Go 依赖（wails v2.12.0）
 ├── wails.json                   # Wails 项目配置
 ├── engine/
-│   ├── bin/idb-engine.jar       # 底层数据引擎（JVM jar，行分隔 JSON 协议）
-│   └── jre/                     # 精简 JRE（与 jar 一同打包随发行）
+│   └── bin/idb-engine.jar       # 底层数据引擎（JVM jar，行分隔 JSON 协议）
+│   └── jre/                     # 精简 JRE（规划随发行包一同交付，当前未捆绑）
 ├── frontend/
 │   ├── package.json             # Svelte 5 + SvelteKit 2 + Tailwind 4 + Vite 8
 │   ├── svelte.config.js         # adapter-static + 强制 runes 模式
 │   ├── vite.config.js           # @tailwindcss/vite + sveltekit() 插件
 │   ├── src/
 │   │   ├── app.html
-│   │   ├── lib/                 # $lib 别名根，公共代码
+│   │   ├── lib/
+│   │   │   ├── api/             # 引擎通信 API 层
+│   │   │   │   ├── index.js     # 统一请求封装（SCHEMA/USER/TABLE/DATA/SQL）
+│   │   │   │   ├── connections.js # 连接管理 API（List/Get/Save/Delete）
+│   │   │   │   └── normalize.js   # 响应数据归一化工具
+│   │   │   ├── components/      # 14 个 Svelte 组件
+│   │   │   │   ├── ConnectionForm.svelte  # 连接管理界面
+│   │   │   │   ├── Sidebar.svelte         # 数据库树形浏览器
+│   │   │   │   ├── DataGrid.svelte        # 数据表格查看/编辑
+│   │   │   │   ├── SqlConsole.svelte      # SQL 控制台（Monaco 编辑器）
+│   │   │   │   ├── SqlEditor.svelte       # Monaco 编辑器封装
+│   │   │   │   ├── UserPanel.svelte       # 用户与权限管理
+│   │   │   │   ├── TablePanel.svelte      # 表结构编辑器（ALTER TABLE）
+│   │   │   │   ├── TableEditor.svelte     # 新建表向导
+│   │   │   │   ├── RowEditor.svelte       # 行插入/编辑表单
+│   │   │   │   ├── Modal.svelte           # 通用模态框
+│   │   │   │   ├── ConfirmDialog.svelte   # 确认对话框
+│   │   │   │   ├── ContextMenu.svelte     # 右键上下文菜单
+│   │   │   │   ├── ThemeToggle.svelte     # 亮色/暗色/自动主题切换
+│   │   │   │   └── ToastHost.svelte       # Toast 通知容器
+│   │   │   ├── stores/          # Svelte 状态管理
+│   │   │   │   ├── appState.js  # 活跃连接状态
+│   │   │   │   ├── themeStore.js # 主题偏好（持久化到 localStorage）
+│   │   │   │   └── toasts.js    # Toast 通知队列
+│   │   │   ├── monaco/setup.js  # Monaco Worker 初始化
+│   │   │   ├── readonly.js      # 只读系统库保护
+│   │   │   └── temporal.js      # 时间列类型格式化工具
 │   │   └── routes/
 │   │       ├── +layout.js       # prerender = true
-│   │       ├── +layout.svelte
-│   │       ├── +page.svelte
-│   │       └── layout.css       # @import 'tailwindcss'
+│   │       ├── +layout.svelte   # 全局布局（主题初始化 + ToastHost）
+│   │       ├── +page.svelte     # 主页面（连接 → 工作台两阶段 UI）
+│   │       └── layout.css       # MD3 设计令牌 + Tailwind 4 @theme 注入
 │   ├── static/                  # 静态资产
 │   └── wailsjs/                 # Wails 自动生成的 JS 绑定（go/main + runtime）
 └── build/
@@ -59,8 +91,10 @@ idb_desktop/
 | 样式 | Tailwind CSS | `^4.2.2`（通过 `@tailwindcss/vite` 注入） |
 | 构建器 | Vite | `^8.0.7` |
 | 适配器 | `@sveltejs/adapter-static` | `^3.0.10` |
-| 数据引擎 | JVM jar 子进程 | `engine/bin/idb-engine.jar` + `engine/jre/` |
-| 设计语言 | Material Design 3（规划中） | Tailwind 通过 CSS 变量注入 MD Token |
+| 数据引擎 | JVM jar 子进程 | `engine/bin/idb-engine.jar`（内置 `engine/jre/` 待捆绑） |
+| SQL 编辑器 | Monaco Editor | `^0.55.1`（动态加载，自定义 SQL 补全 + MD3 主题） |
+| SQL 格式化 | sql-formatter | `^15.8.0`（支持 MySQL / PostgreSQL 方言） |
+| 设计语言 | Material Design 3 | Tailwind 4 通过 `@theme` + CSS 变量注入完整 MD3 令牌 |
 
 ---
 
@@ -140,7 +174,7 @@ idb_desktop/
 | USER | UPDATE | `{ user, schema, privileges, isGrant }` | `isGrant=true` 授权、`false` 回收 |
 | TABLE | LIST | `{}` | 列出 `connection.database` 内的表，返回 `[{name, type}]` |
 | TABLE | LIST | `{ tableName }` | **payload 含 tableName 时自动路由**为列元数据，返回 `[{name, type, size, nullable, isPrimaryKey, defaultValue}]` |
-| DATA | LIST | `{ tableName, page, pageSize }` | **page 从 1 开始**；LOB / 长文本字段引擎自动截断为 `[LOB Data]` |
+| DATA | LIST | `{ tableName, page, pageSize }` | **page 从 1 开始**；LOB / 长文本字段引擎自动截断为 `[LOB Data]`；返回 `{ total, page, pageSize, rows: [...] }` |
 | DATA | CREATE | `{ tableName, values: { col: val, ... } }` | 单行插入；返回 `{ affectedRows }` |
 | DATA | UPDATE | `{ tableName, changes: {...}, where: {...} }` | 多列条件更新；返回 `{ affectedRows }` |
 | DATA | DELETE | `{ tableName, where: {...} }` | 条件删除；返回 `{ affectedRows }` |
@@ -167,145 +201,43 @@ idb_desktop/
 ### 6.1 生命周期与子进程管控
 
 启动时：
-1. 释放（或定位）`engine/bin/idb-engine.jar`，拼装命令行；
-2. 以受限 JVM 参数（`-Xms32m -Xmx64m -XX:+UseSerialGC`）启动 Java 子进程；
-3. 取得 stdin / stdout 句柄，建立行扫描器。
+1. 定位 `engine/bin/idb-engine.jar`，拼装命令行（`resolveAppDir()` 优先可执行文件目录，回退到 CWD）；
+2. 以受限 JVM 参数（`-Xms32m -Xmx256m -XX:+UseSerialGC`）启动 Java 子进程；
+3. 取得 stdin / stdout 句柄，启动 `readLoop` goroutine 建立异步响应路由。
 
 关闭时：
-1. 向子进程写入 `CMD_EXIT\n`，等待优雅退出；
-2. 必要时 `Process.Kill()` 兜底；
-3. 清理临时释放出的 jar 文件（如果走 embed 释放路径）。
+1. 向子进程写入 `CMD_EXIT\n`，关闭 stdin；
+2. 调用 `Process.Kill()` 兜底；
+3. `closeAll()` 唤醒所有待响应的 `pending` 调用者，返回错误信封。
 
-#### 启动命令参考实现（Go）
+#### 实际实现概要（[engine.go](engine.go)）
 
 ```go
-package main
-
-import (
-    "bufio"
-    "context"
-    "io"
-    "os/exec"
-    "path/filepath"
-)
-
 type Engine struct {
     cmd    *exec.Cmd
     stdin  io.WriteCloser
     stdout *bufio.Scanner
-}
 
-// 优先使用项目内捆绑的 JRE，避免对宿主 Java 环境的依赖
-func resolveJavaBin(appDir string) string {
-    // Windows: engine/jre/bin/java.exe；macOS / Linux: engine/jre/bin/java
-    return filepath.Join(appDir, "engine", "jre", "bin", javaExecName())
-}
-
-func StartEngine(ctx context.Context, appDir string) (*Engine, error) {
-    jarPath := filepath.Join(appDir, "engine", "bin", "idb-engine.jar")
-
-    cmd := exec.CommandContext(ctx, resolveJavaBin(appDir),
-        "-Xms32m",          // 初始堆内存仅分配 32MB
-        "-Xmx64m",          // 最大堆内存严格限制在 64MB
-        "-XX:+UseSerialGC", // 桌面端单人使用，开启串行 GC 更省内存
-        "-jar", jarPath,
-    )
-    // 防止 Windows 下弹出 console 子窗口（按平台用 build tag 注入 SysProcAttr）
-    applyHideWindow(cmd)
-
-    stdin, err := cmd.StdinPipe()
-    if err != nil {
-        return nil, err
-    }
-    stdoutPipe, err := cmd.StdoutPipe()
-    if err != nil {
-        return nil, err
-    }
-    // stderr 保留给调试日志，绝不与 stdout 协议流混用
-    cmd.Stderr = newStderrLogger()
-
-    if err := cmd.Start(); err != nil {
-        return nil, err
-    }
-
-    scanner := bufio.NewScanner(stdoutPipe)
-    // 默认 64KB 行缓冲过小，分页结果易超限；放宽到 8MB（仍受 §9 大字段熔断保护）
-    scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
-
-    return &Engine{cmd: cmd, stdin: stdin, stdout: scanner}, nil
-}
-
-// 单次请求：写入一行 JSON，读取一行 JSON
-func (e *Engine) Invoke(reqJSON string) (string, error) {
-    if _, err := e.stdin.Write([]byte(reqJSON + "\n")); err != nil {
-        return "", err
-    }
-    if !e.stdout.Scan() {
-        if err := e.stdout.Err(); err != nil {
-            return "", err
-        }
-        return "", io.ErrUnexpectedEOF
-    }
-    return e.stdout.Text(), nil
-}
-
-func (e *Engine) Shutdown() {
-    if e.stdin != nil {
-        _, _ = e.stdin.Write([]byte("CMD_EXIT\n"))
-        _ = e.stdin.Close()
-    }
-    if e.cmd != nil && e.cmd.Process != nil {
-        _ = e.cmd.Process.Kill()
-    }
+    writeMu sync.Mutex          // stdin 写入互斥（两条 JSON 不交错）
+    pendMu  sync.Mutex
+    pending map[string]chan string // id → 等待者 channel（容量 1）
+    done    chan struct{}        // 引擎退出信号
 }
 ```
 
-集成到 Wails 生命周期：
+**并发协议**：`Invoke(ctx, reqJSON)` 先从 JSON 中提取 `id`，注册一个 capacity-1 的 channel 到 `pending`，互斥写入 stdin，然后阻塞等待对应 channel 返回结果。独立 `readLoop` goroutine 持续读取 stdout，解析响应 `id`，将结果路由到正确的等待者。支持 `ctx` 取消和引擎死亡检测。
 
-```go
-// app.go
-func (a *App) startup(ctx context.Context) {
-    a.ctx = ctx
-    appDir, _ := os.Getwd() // dev 模式取工作目录；prod 改用 os.Executable() 推导
-    eng, err := StartEngine(ctx, appDir)
-    if err != nil {
-        runtime.LogErrorf(ctx, "engine start failed: %v", err)
-        return
-    }
-    a.engine = eng
-}
+`FetchDatabaseData(reqJSON string) string` 是暴露给前端的唯一引擎入口，内部调用 `engine.Invoke(context.Background(), reqJSON)`，异常时返回合成错误信封。
 
-func (a *App) shutdown(ctx context.Context) {
-    if a.engine != nil {
-        a.engine.Shutdown()
-    }
-}
+**路径解析**：`resolveAppDir()` 优先使用 `os.Executable()` 推导的目录（生产），回退到 `os.Getwd()`（`wails dev`）。
 
-// 暴露给前端的统一入口
-func (a *App) FetchDatabaseData(reqJSON string) string {
-    if a.engine == nil {
-        return `{"success":false,"error":"engine not ready"}`
-    }
-    resp, err := a.engine.Invoke(reqJSON)
-    if err != nil {
-        return `{"success":false,"error":"pipe error: ` + err.Error() + `"}`
-    }
-    return resp
-}
-```
-
-要点：
-- **`exec.CommandContext`** 让子进程受 Wails ctx 约束，主进程退出可联动取消。
-- **`Stderr` 必须独立**，绝不可重定向到 stdout，否则 §5 协议流被污染。
-- **行缓冲** 必须放大（默认 `bufio.Scanner` 上限 64KB），同时仍依赖 §9 大字段熔断兜底。
-- **平台差异**：`applyHideWindow` 在 Windows 通过 `syscall.SysProcAttr{HideWindow: true, CreationFlags: CREATE_NO_WINDOW}` 隐藏控制台子窗口；macOS / Linux 留空实现，按 build tag 拆文件。
-- **Java 路径**：优先用 `engine/jre/bin/java`，不要假设宿主已装 JDK；分发包内置 JRE 是产品形态的一部分。
-
-> 当前 [app.go](app.go) 仅有 `Greet` 桩，引擎启动 / 管道转发逻辑尚未实装，是接下来需要补齐的核心环节。
+**平台差异**：
+- `engine_windows.go`：`syscall.SysProcAttr{HideWindow: true, CreationFlags: CREATE_NO_WINDOW}` 隐藏控制台子窗口。
+- `engine_unix.go`：空实现。
 
 ### 6.2 内存与并发护栏
 
-- **JVM 上限锁死 64MB**：通过启动参数施加，避免引擎抢占主进程内存预算。
+- **JVM 上限锁死 256MB**：通过 `-Xmx256m` 启动参数施加，避免引擎抢占主进程内存预算。
 - **Wails Webview 目标**：物理常驻 ≤ 150MB（与 §8 大字段熔断协同保障）。
 - **管道读超时**：建议在 Go 侧使用带 deadline 的 reader 包装，防止子进程僵死阻塞 UI。
 
@@ -359,40 +291,52 @@ compilerOptions: {
 - props 用 `let { foo } = $props()`（参见 [+layout.svelte](frontend/src/routes/+layout.svelte)）；
 - node_modules 内库代码不受影响，避免破坏第三方 Svelte 4 组件。
 
-### 8.3 Tailwind 4 接入
+### 8.3 Tailwind 4 + MD3 设计令牌
 
-通过 Vite 插件 `@tailwindcss/vite` 注入；样式入口 [layout.css](frontend/src/routes/layout.css) 仅一行：
+通过 Vite 插件 `@tailwindcss/vite` 注入；样式入口 [layout.css](frontend/src/routes/layout.css) 已包含完整的 Material Design 3 令牌层：
 
-```css
-@import 'tailwindcss';
+- 亮色 / 暗色调色板（基于 MD3 baseline seed `#6750A4`）；
+- 完整令牌集：primary / secondary / tertiary / error / success / surface 色调 / outline / 阴影 / 圆角 / 状态层透明度；
+- `@theme` 块将所有 MD3 令牌映射为 Tailwind 工具类颜色；
+- `@utility` 自定义组件类：`md-card`、`md-card-elevated`、`md-input`、`md-btn-filled`、`md-btn-tonal`、`md-btn-outlined`、`md-btn-text`、`md-btn-danger`、`md-icon-btn`、`md-chip`、`md-chip-pk`；
+- 字体栈：Inter + CJK 回退（sans），JetBrains Mono（monospace）。
+
+无 `tailwind.config.js`（Tailwind 4 默认零配置）。
+
+### 8.4 状态中心
+
+已实现三个 Svelte Store（位于 `src/lib/stores/`）：
+
+```js
+// appState.js — 活跃数据库连接
+export const defaultConnection = { driver: 'Mysql', host: '127.0.0.1', port: 3306, user: 'root' }
+export const activeConnection = writable(null) // ConnectionConfig | null
+
+// themeStore.js — 主题偏好（light / dark / auto），持久化到 localStorage
+export const themeMode = writable(load())    // 'light' | 'dark' | 'auto'
+export const resolvedTheme = derived(...)    // 实际应用的 'light' | 'dark'
+
+// toasts.js — Toast 通知队列，自动 3.5s 移除
+export const toasts = writable([])
+export function ok(text) { pushToast('success', text) }
+export function err(text) { pushToast('error', text) }
 ```
 
-无 `tailwind.config.js`（Tailwind 4 默认零配置）。如需 MD3 设计令牌（颜色、圆角、阴影），通过 CSS 变量 + `@theme` 块在 `layout.css` 中扩展。
-
-### 8.4 状态中心（规划）
-
-```ts
-// src/lib/stores/appState.ts（待新建）
-import { writable } from 'svelte/store';
-
-export interface ConnectionConfig {
-  id: string;
-  driver: 'Mysql' | 'Postgresql';
-  host: string;
-  port: number;
-  user: string;
-  password?: string;
-  database: string;
-}
-
-export const activeConnection = writable<ConnectionConfig | null>(null);
-```
-
-> 所有写入引擎的请求必须从该 Store 取出 `activeConnection` 拼装 `connection` 字段。Svelte 5 项目可考虑用 `$state` rune + `getContext` 替代经典 `writable`，按团队偏好选型。
+> 所有写入引擎的请求从 `activeConnection` 取出 `connection` 字段，前端 API 层（`src/lib/api/index.js`）自动完成拼装。
 
 ### 8.5 Wails JS 绑定
 
-`frontend/wailsjs/go/main/App.js` 由 Wails 自动生成，每个 Go 绑定方法对应一个具名 export。新增 Go 方法后会自动刷新。**不要手工编辑 `wailsjs/` 内任何文件**。
+`frontend/wailsjs/go/main/App.js` 由 Wails 自动生成，当前暴露 5 个方法：
+
+| 方法 | 用途 |
+|---|---|
+| `FetchDatabaseData(reqJSON)` | 统一引擎中转（SCHEMA/USER/TABLE/DATA/SQL） |
+| `ListConnections()` | 列出已保存的连接（密码脱敏） |
+| `GetConnectionPassword(id)` | 解密并返回指定连接的密码 |
+| `SaveConnection(input)` | 创建/更新连接配置（密码自动加密） |
+| `DeleteConnection(id)` | 删除连接配置 |
+
+新增 Go 方法后会自动刷新。**不要手工编辑 `wailsjs/` 内任何文件**。
 
 ---
 
@@ -403,7 +347,7 @@ export const activeConnection = writable<ConnectionConfig | null>(null);
 2. **大字段熔断**
    `BLOB` / `CLOB` / `BYTEA` 或长度 > 2048 字符的文本，引擎层在序列化 JSON 时必须截断为占位 `[LOB Data / Multi-Text Context]`；前端渲染为 MD3 放大镜图标，用户点击触发**单行精准查询**。规避 stdin/stdout 缓冲区被打爆导致 Wails 假死。
 3. **分页强约束**
-   单页上限 `pageSize ≤ 1000`；前端表格强制虚拟滚动（virtual list），保证 DOM 节点常量级。
+   单页上限 `pageSize ≤ 1000`（当前默认 100 行/页）；前端表格目前使用标准 `<table>` 渲染，虚拟滚动（virtual list）待后续引入以保证大列宽表 DOM 节点常量级。
 4. **凭证生命周期**
    `password` 仅存在于前端 Store + 单次请求 envelope；引擎落到磁盘 / 日志的内容必须脱敏（连接串中的密码字段在 panic / error 路径中务必抹除）。
 5. **进程边界纪律**
@@ -444,12 +388,19 @@ cd frontend && npm run lint
 | 模块 | 状态 |
 |---|---|
 | Wails 项目骨架 | ✅ 已搭建（main.go / app.go / wails.json） |
-| SvelteKit + Svelte 5 + Tailwind 4 | ✅ 脚手架就绪，仅 Hello World 页面 |
-| Go ↔ JVM 子进程管道 | ⏳ 未实装，仅有 `Greet` 占位 |
-| JSON 协议处理器 | ⏳ 待实现（SCHEMA / USER / TABLE / DATA / SQL） |
-| 前端连接管理 / 表格视图 / 虚拟滚动 | ⏳ 未开始 |
-| MD3 Token / Tailwind theme | ⏳ 未注入 |
-| 大字段熔断 / 分页护栏 | ⏳ 未实现 |
+| SvelteKit + Svelte 5 + Tailwind 4 | ✅ 完整 SPA 架构，单页面两阶段 UI |
+| Go ↔ JVM 子进程管道 | ✅ 已实装（异步并发协议，id 路由，8MB 行缓冲） |
+| JSON 协议处理器 | ✅ 前端 API 层完整封装（SCHEMA / USER / TABLE / DATA / SQL） |
+| 连接配置持久化 | ✅ 加密存储（Windows DPAPI / AES-256-GCM），CRUD 完整 |
+| 连接管理界面 | ✅ 连接列表 + 表单 + 密码保存 + 删除确认 |
+| 数据库树形浏览器 | ✅ 三级懒加载（Schema → Table → Column），右键菜单，筛选 |
+| 数据表格查看/编辑 | ✅ 分页 + 类型感知渲染 + LOB 熔断查看 + 行 CRUD |
+| SQL 控制台 | ✅ Monaco 编辑器 + 智能补全 + 多语句执行 + SQL 格式化 |
+| 表结构编辑 | ✅ Draft 模式列编辑器 + 新建表向导 |
+| 用户与权限管理 | ✅ 用户列表 + GRANT/REVOKE 模态框 |
+| MD3 Token / Tailwind theme | ✅ 完整 MD3 令牌注入 + 亮色/暗色/自动主题 |
+| 上下文菜单 / Toast 通知 | ✅ 全局右键菜单 + Toast 通知系统 |
+| 只读系统库保护 | ✅ MySQL 系统 schema 写操作拦截 |
+| 虚拟滚动 | ⏳ 未实现（当前标准 table 渲染，100 行/页） |
+| 精简 JRE 捆绑 | ⏳ `engine/jre/` 目录未就绪，需单独安装 Java |
 | 打包脚本（embed jar + jre） | ⏳ 未配置 |
-
-> 实施顺序建议：先打通 Go ↔ JVM 管道（含 jar 释放与生命周期），再落地一条端到端的最小请求（如 SCHEMA LIST），再补 MD3 设计层与表格视图。

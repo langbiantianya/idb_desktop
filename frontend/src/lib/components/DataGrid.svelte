@@ -29,9 +29,11 @@
 	/** @type {Props} */
 	let { schemaConn, schemaName, tableName, reloadKey = 0 } = $props();
 
-	const PAGE_SIZE = 100;
+	const PAGE_SIZE_OPTIONS = [20, 50, 100, 200, 500];
 
 	let page = $state(1);
+	let pageSize = $state(20);
+	let total = $state(/** @type {number | null} */ (null));
 	let rows = $state(/** @type {Record<string, unknown>[]} */ ([]));
 	let columns = $state(/** @type {string[]} */ ([]));
 	let columnMeta = $state(/** @type {ColumnMeta[]} */ ([]));
@@ -48,6 +50,7 @@
 
 	let pkColumns = $derived(columnMeta.filter((c) => c.isPrimaryKey).map((c) => c.name));
 	let readOnly = $derived(isReadOnlySchema(schemaConn, schemaName));
+	let totalPages = $derived(total !== null ? Math.max(1, Math.ceil(total / pageSize)) : null);
 	/** @type {Record<string, import('$lib/api').ColumnMeta>} */
 	let metaByName = $derived.by(() => {
 		const m = {};
@@ -80,28 +83,37 @@
 		headerCtx = { x: e.clientX, y: e.clientY, col };
 	}
 
+	// 仅当 schemaConn / tableName / reloadKey 变化时才重置分页并重载；
+	// gotoPage / changePageSize 只更新对应状态，由 effect 统一触发 load。
+	let _prevSig = $state('');
 	$effect(() => {
-		schemaConn;
-		tableName;
-		reloadKey;
-		page = 1;
+		const sig = `${schemaConn.driver}|${schemaConn.host}|${schemaConn.port}|${schemaConn.database}|${tableName}|${reloadKey}`;
+		const tableChanged = sig !== _prevSig;
+		if (tableChanged) {
+			_prevSig = sig;
+			page = 1;
+			total = null;
+			void loadMeta();
+		}
+		// page / pageSize 也是依赖，任何变化都触发 load
 		void load();
-		void loadMeta();
 	});
 
 	async function load() {
 		pending = true;
 		try {
-			const resp = await listData(schemaConn, tableName, page, PAGE_SIZE);
+			const resp = await listData(schemaConn, tableName, page, pageSize);
 			if (!resp.success) {
 				err(resp.error ?? '加载失败');
 				rows = [];
 				columns = [];
+				total = null;
 				return;
 			}
 			const normalized = asDataPage(resp.data);
 			rows = normalized.rows;
 			columns = normalized.columns;
+			total = normalized.total;
 		} finally {
 			pending = false;
 		}
@@ -114,8 +126,16 @@
 
 	function gotoPage(p) {
 		if (p < 1 || pending) return;
+		if (totalPages !== null && p > totalPages) return;
 		page = p;
-		load();
+	}
+
+	/** @param {number} newSize */
+	function changePageSize(newSize) {
+		if (newSize === pageSize || pending) return;
+		pageSize = newSize;
+		page = 1;
+		total = null;
 	}
 
 	function buildRowWhere(row) {
@@ -274,22 +294,52 @@
 		</h2>
 		<div class="flex items-center gap-1.5">
 			<button
-				class="md-btn-text"
+				class="md-icon-btn"
+				title="上一页"
 				onclick={() => gotoPage(page - 1)}
 				disabled={pending || page <= 1}
 			>
-				← 上一页
+				◀
 			</button>
-			<span class="text-xs" style="color: var(--md-on-surface-variant);">
-				第 {page} 页 · {PAGE_SIZE} 行
-			</span>
+			{#if totalPages !== null && totalPages > 1}
+				<select
+					class="text-xs"
+					style="padding: 0.125rem 0.25rem; border: 1px solid var(--md-outline-variant); border-radius: var(--md-radius-sm); background: var(--md-surface-container-high); color: var(--md-on-surface); cursor: pointer;"
+					value={page}
+					onchange={(e) => gotoPage(Number(e.currentTarget.value))}
+				>
+					{#each { length: totalPages } as _, i}
+						<option value={i + 1}>第 {i + 1} / {totalPages} 页</option>
+					{/each}
+				</select>
+			{:else}
+				<span class="text-xs" style="color: var(--md-on-surface-variant);">
+					第 {page} 页
+				</span>
+			{/if}
+			{#if total !== null}
+				<span class="text-xs" style="color: var(--md-on-surface-variant);">
+					共 {total.toLocaleString()} 条
+				</span>
+			{/if}
 			<button
-				class="md-btn-text"
+				class="md-icon-btn"
+				title="下一页"
 				onclick={() => gotoPage(page + 1)}
-				disabled={pending || rows.length < PAGE_SIZE}
+				disabled={pending || (totalPages !== null ? page >= totalPages : rows.length < pageSize)}
 			>
-				下一页 →
+				▶
 			</button>
+			<select
+				class="md-input ml-1 text-xs"
+				style="padding: 0.125rem 0.5rem; min-width: 0;"
+				value={pageSize}
+				onchange={(e) => changePageSize(Number(e.currentTarget.value))}
+			>
+				{#each PAGE_SIZE_OPTIONS as opt (opt)}
+					<option value={opt}>{opt} 条/页</option>
+				{/each}
+			</select>
 			<button class="md-icon-btn" title="刷新" onclick={() => load()} disabled={pending}>
 				↻
 			</button>
