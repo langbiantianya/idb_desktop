@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -53,6 +54,34 @@ func (a *App) FetchDatabaseData(reqJSON string) string {
 	return resp
 }
 
+// FetchDatabaseDataStreaming 发送流式请求。
+// 如果引擎返回 stream:true，响应通过 Wails 事件逐行推送，本函数立即返回确认信封；
+// 如果引擎返回 stream:false（引擎不支持流式或非流式场景），本函数等待完整响应并直接返回。
+func (a *App) FetchDatabaseDataStreaming(reqJSON string) string {
+	if a.engine == nil {
+		return `{"success":false,"error":"engine not ready"}`
+	}
+
+	// 先尝试 Invoke（等第一个响应）
+	resp, err := a.engine.Invoke(a.ctx, reqJSON)
+	if err != nil {
+		return `{"success":false,"error":"pipe error: ` + escapeJSONString(err.Error()) + `"}`
+	}
+
+	// 解析首个响应，判断是否流式
+	var meta struct {
+		ID     string `json:"id"`
+		Stream bool   `json:"stream"`
+	}
+	if err := json.Unmarshal([]byte(resp), &meta); err == nil && meta.Stream {
+		// 流式响应：readLoop 已将此条通过事件推送，返回确认信封
+		return `{"id":"` + meta.ID + `","success":true,"stream":true}`
+	}
+
+	// 非流式响应：直接返回原始响应
+	return resp
+}
+
 // ListConnections 返回所有保存的连接（不含密码本身，仅 hasPassword 标记）。
 func (a *App) ListConnections() ([]SavedConnection, error) {
 	return a.cfg.listConnections()
@@ -75,7 +104,10 @@ func (a *App) DeleteConnection(id string) error {
 	return a.cfg.deleteConnection(id)
 }
 
-// escapeJSONString 仅处理 envelope error 字段中可能出现的控制字符与引号。
+// IsDevMode 暴露给前端判断当前是否为开发模式（wails dev）。
+func (a *App) IsDevMode() bool {
+	return isDevBuild()
+}
 // 不引入 encoding/json 是为了避免在已有 envelope 字符串外再做一次完整序列化的开销。
 func escapeJSONString(s string) string {
 	out := make([]byte, 0, len(s)+8)

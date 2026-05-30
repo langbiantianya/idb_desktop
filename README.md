@@ -11,12 +11,13 @@
 - **零端口通信** — 前端与 Go 主进程通过 Wails 原生 IPC 通信，Go 与 JVM 引擎通过 stdin/stdout 管道通信，全程不开本地网络端口
 - **连接配置管理** — 保存/加载/删除连接配置，密码使用操作系统级加密（Windows DPAPI / AES-256-GCM）
 - **数据库浏览** — 三级懒加载树形浏览器：Schema → Table → Column，支持筛选和右键操作
-- **数据查看与编辑** — 分页数据表格，类型感知渲染（时间类型、LOB 大字段熔断查看），行级增删改
-- **SQL 控制台** — Monaco 编辑器，智能自动补全（Schema / Table / Column / 关键字），多语句执行，SQL 格式化
-- **表结构管理** — 新建表向导 + 表结构编辑器（Draft 模式列编辑，支持添加/修改/删除列）
+- **数据查看与编辑** — 分页数据表格（20/50/100/200/500 条/页），支持全量流式加载，类型感知渲染（时间类型、LOB 大字段熔断查看），行级增删改
+- **SQL 控制台** — Monaco 编辑器，智能自动补全（Schema / Table / Column / 关键字），多语句执行，SQL 格式化，SELECT 自动流式响应
+- **表结构管理** — 新建表向导 + 表结构编辑器（Draft 模式列编辑，支持添加/修改/删除列，支持字段改名）
 - **用户权限管理** — 用户列表查看，GRANT / REVOKE 权限操作
 - **主题系统** — 亮色 / 暗色 / 跟随系统三种模式，MD3 完整令牌注入
 - **只读保护** — MySQL 系统 Schema（sys, performance_schema, mysql, information_schema）自动拦截写操作
+- **双路由设计** — 连接选择页（`/`）与数据库工作台（`/workspace`）分离
 
 ---
 
@@ -29,8 +30,8 @@
 | 前端框架 | SvelteKit 2 + Svelte 5 (runes) |
 | 样式 | Tailwind CSS 4 + Material Design 3 |
 | SQL 编辑器 | Monaco Editor |
-| 数据引擎 | JVM 子进程（stdin/stdout JSON 管道协议） |
-| 构建工具 | Vite 8 |
+| 数据引擎 | JVM 子进程（stdin/stdout JSON 管道协议 + 流式响应） |
+| 构建工具 | Vite 8 + Makefile |
 
 ---
 
@@ -39,7 +40,9 @@
 - **Go** 1.23+
 - **Node.js** 18+（含 npm）
 - **Wails CLI** v2（`go install github.com/wailsapp/wails/v2/cmd/wails@latest`）
-- **Java** 8+（用于运行 `engine/bin/idb-engine.jar`；后续版本将捆绑精简 JRE）
+- **Java** 8+（`make jre-download` 自动下载 Azul Zulu JRE 21）
+- **NSIS**（Windows 安装包构建需要，`https://nsis.sourceforge.io/Download`）
+- **Python 3**（JRE 自动下载解析 API 响应）
 
 ---
 
@@ -49,15 +52,34 @@
 # 安装 Wails CLI（如未安装）
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-# 安装前端依赖
-cd frontend && npm install && cd ..
-
-# 开发模式（带热重载）
+# 开发模式（热重载，右键可打开 DevTools）
+make dev
+# 或
 wails dev
 
 # 生产构建
-wails build
+make build
+
+# Windows 安装包
+make package-windows
+
+# Linux 分发包
+make package-linux
 ```
+
+---
+
+## Makefile 命令
+
+| 命令 | 说明 |
+|---|---|
+| `make dev` | 开发模式（热重载） |
+| `make build` | 当前平台构建 |
+| `make package-windows` | Windows NSIS 安装包 |
+| `make package-linux` | Linux tar.gz 分发包 |
+| `make package-all` | 双平台构建 |
+| `make jre-download` | 下载 Azul Zulu JRE 21 到 `engine/jre/` |
+| `make clean` | 清理构建产物 |
 
 ---
 
@@ -66,23 +88,30 @@ wails build
 ```
 idb_desktop/
 ├── app.go                  # Wails App：生命周期钩子 + 前端绑定方法
+├── app_dev.go / app_prod.go # dev/prod 构建标识
 ├── config.go               # 连接配置持久化
 ├── crypto_windows.go       # Windows DPAPI 加密
 ├── crypto_other.go         # AES-256-GCM 加密（非 Windows）
-├── engine.go               # JVM 子进程生命周期 + 异步并发管道协议
+├── engine.go               # JVM 子进程生命周期 + 异步并发管道 + 流式响应
 ├── engine_windows.go       # Windows 平台隐藏控制台子窗口
 ├── engine_unix.go          # macOS / Linux 平台空实现
 ├── main.go                 # Wails 启动入口
+├── Makefile                # 构建自动化
 ├── engine/
 │   └── bin/idb-engine.jar  # 数据引擎
+├── scripts/
+│   └── package-linux.sh    # Linux 打包脚本
 ├── frontend/
 │   └── src/
 │       ├── lib/
-│       │   ├── api/        # 引擎通信 API 层
+│       │   ├── api/        # 引擎通信 API（invoke + invokeStreaming）
 │       │   ├── components/ # 14 个 Svelte 组件
 │       │   └── stores/     # Svelte 状态管理
-│       └── routes/         # 路由页面
-└── build/                  # 构建资源
+│       └── routes/
+│           ├── +page.svelte        # 连接选择页
+│           └── workspace/
+│               └── +page.svelte    # 数据库工作台
+└── build/                  # 构建资源（NSIS、manifest、icon）
 ```
 
 ---
@@ -106,25 +135,4 @@ idb_desktop/
 
 ---
 
-## 开发命令
-
-```bash
-# 开发模式（热重载，可访问 Go 绑定）
-wails dev
-
-# 生产构建
-wails build
-
-# 仅前端开发（调试样式时方便）
-cd frontend && npm run dev
-
-# 前端格式化 / Lint
-cd frontend && npm run format
-cd frontend && npm run lint
-```
-
----
-
 ## License
-
-Private project.

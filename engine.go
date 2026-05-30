@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+
+	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // Engine 封装 JVM 子进程的生命周期与基于 id 的异步管道协议。
@@ -21,6 +23,7 @@ type Engine struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout *bufio.Scanner
+	ctx    context.Context // 用于 Wails EventsEmit
 
 	writeMu sync.Mutex // 仅在写入 stdin 期间持有
 
@@ -104,6 +107,7 @@ func StartEngine(ctx context.Context) (*Engine, error) {
 		cmd:     cmd,
 		stdin:   stdin,
 		stdout:  scanner,
+		ctx:     ctx,
 		pending: make(map[string]chan string),
 		done:    make(chan struct{}),
 	}
@@ -114,18 +118,58 @@ func StartEngine(ctx context.Context) (*Engine, error) {
 }
 
 // readLoop 单 goroutine 消费 stdout 行，按 id 路由到 pending channel。
+// 支持流式响应：stream=true 的消息通过 Wails EventsEmit 推送到前端，
+// 直到 end=true 时才从 pending 中移除并通知 channel。
 // 看到 EOF / 缓冲超限 / 任何 scanner 错误即调 closeAll 终止整个 engine。
 func (e *Engine) readLoop() {
 	for e.stdout.Scan() {
 		line := e.stdout.Text()
 		var meta struct {
-			ID string `json:"id"`
+			ID     string `json:"id"`
+			Stream bool   `json:"stream"`
+			End    bool   `json:"end"`
 		}
 		if err := json.Unmarshal([]byte(line), &meta); err != nil || meta.ID == "" {
 			log.Printf("[engine] orphan response (no id): %s", truncateForLog(line))
 			continue
 		}
 
+		if meta.Stream {
+			// 流式响应：推送事件到前端
+			eventName := "engine:stream:" + meta.ID
+			if meta.End {
+				eventName = "engine:stream-end:" + meta.ID
+			}
+			wruntime.EventsEmit(e.ctx, eventName, line)
+
+			if meta.End {
+				// 流结束，从 pending 移除，并写一个结束标记到 channel（唤醒 Invoke）
+				e.pendMu.Lock()
+				ch, ok := e.pending[meta.ID]
+				delete(e.pending, meta.ID)
+				e.pendMu.Unlock()
+				if ok {
+					select {
+					case ch <- line:
+					default:
+					}
+				}
+			} else {
+				// 流式首条消息：写入 channel 让 Invoke 拿到并判断是否流式
+				e.pendMu.Lock()
+				ch, ok := e.pending[meta.ID]
+				e.pendMu.Unlock()
+				if ok {
+					select {
+					case ch <- line:
+					default:
+					}
+				}
+			}
+			continue
+		}
+
+		// 非流式响应：与之前逻辑一致
 		e.pendMu.Lock()
 		ch, ok := e.pending[meta.ID]
 		if ok {
@@ -137,12 +181,9 @@ func (e *Engine) readLoop() {
 			log.Printf("[engine] orphan response: id=%s", meta.ID)
 			continue
 		}
-		// channel 容量 1，等待者还没被 ctx 取消时一定能立即写入；
-		// 若调用方已 cleanup（取消时 delete 过自己），上面就拿不到 ch。
 		select {
 		case ch <- line:
 		default:
-			// 兜底：若 channel 已被复用（理论上不会，因 delete + 容量 1），日志一下避免阻塞。
 			log.Printf("[engine] dropped response for id=%s (channel full)", meta.ID)
 		}
 	}
@@ -171,16 +212,20 @@ func (e *Engine) closeAll(reason error) {
 			errMsg = reason.Error()
 		}
 		for id, ch := range pend {
+			// 非流式等待者：通过 channel 返回错误 envelope
 			synth := fmt.Sprintf(`{"id":%q,"success":false,"error":%q}`, id, errMsg)
 			select {
 			case ch <- synth:
 			default:
 			}
+			// 流式等待者：通过事件通知前端流结束（带错误信息）
+			errEvent := fmt.Sprintf(`{"id":%q,"success":false,"error":%q,"stream":true,"end":true}`, id, errMsg)
+			wruntime.EventsEmit(e.ctx, "engine:stream-end:"+id, errEvent)
 		}
 	})
 }
 
-// Invoke 写入一行 JSON 请求，等待对应 id 的响应行返回。
+// Invoke 写入一行 JSON 请求，等待对应 id 的响应行返回（非流式）。
 // reqJSON 必须是单行压缩 JSON，且包含非空字符串字段 "id"。
 // 任意一路触发：响应到达 / ctx 取消 / 引擎终止。
 func (e *Engine) Invoke(ctx context.Context, reqJSON string) (string, error) {
@@ -237,6 +282,44 @@ func (e *Engine) Invoke(ctx context.Context, reqJSON string) (string, error) {
 			return "", e.closeErr
 		}
 	}
+}
+
+// InvokeStreaming 发送流式请求，响应通过 Wails EventsEmit 逐行推送到前端。
+// 注册到 pending 以便引擎异常时通过事件通知前端结束。
+// reqJSON 中的请求会触发引擎流式响应（stream=true 的多行 JSON），
+// 每行通过 "engine:stream:{id}" 事件推送，最后一行（end=true）通过 "engine:stream-end:{id}" 推送。
+func (e *Engine) InvokeStreaming(reqJSON string) (string, error) {
+	var meta struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(reqJSON), &meta); err != nil {
+		return "", fmt.Errorf("invalid request envelope: %w", err)
+	}
+	if meta.ID == "" {
+		return "", errors.New("invalid request envelope: missing id")
+	}
+
+	ch := make(chan string, 1)
+
+	e.pendMu.Lock()
+	if e.closeErr != nil {
+		e.pendMu.Unlock()
+		return "", e.closeErr
+	}
+	e.pending[meta.ID] = ch
+	e.pendMu.Unlock()
+
+	e.writeMu.Lock()
+	_, werr := e.stdin.Write([]byte(reqJSON + "\n"))
+	e.writeMu.Unlock()
+	if werr != nil {
+		e.pendMu.Lock()
+		delete(e.pending, meta.ID)
+		e.pendMu.Unlock()
+		return "", fmt.Errorf("pipe write: %w", werr)
+	}
+
+	return meta.ID, nil
 }
 
 // Shutdown 优雅关闭：先发 CMD_EXIT 让引擎自清理，必要时 Kill 兜底。

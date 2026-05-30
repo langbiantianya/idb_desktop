@@ -17,19 +17,24 @@
 
 ```
 idb_desktop/
-├── app.go                       # Wails App 结构体：生命周期钩子 + 5 个前端绑定方法
+├── app.go                       # Wails App 结构体：生命周期钩子 + 前端绑定方法
+├── app_dev.go                   # dev build tag: isDevBuild() = true
+├── app_prod.go                  # production build tag: isDevBuild() = false
 ├── config.go                    # 连接配置持久化（~/.config/idb/connections.json）
 ├── crypto_windows.go            # Windows DPAPI 密码加密
 ├── crypto_other.go              # 非 Windows 平台 AES-256-GCM 密码加密
-├── engine.go                    # JVM 子进程生命周期 + 基于 id 的异步并发管道协议
+├── engine.go                    # JVM 子进程生命周期 + 异步并发管道协议（含流式响应）
 ├── engine_windows.go            # Windows 平台隐藏控制台子窗口
 ├── engine_unix.go               # macOS / Linux 平台空实现
 ├── main.go                      # Wails 启动入口，//go:embed all:frontend/build
+├── Makefile                     # 构建/打包/清理（Windows NSIS + Linux tar.gz）
 ├── go.mod / go.sum              # Go 依赖（wails v2.12.0）
-├── wails.json                   # Wails 项目配置
+├── wails.json                   # Wails 项目配置（含 Info 元数据）
 ├── engine/
 │   └── bin/idb-engine.jar       # 底层数据引擎（JVM jar，行分隔 JSON 协议）
-│   └── jre/                     # 精简 JRE（规划随发行包一同交付，当前未捆绑）
+│   └── jre/                     # Azul Zulu JRE（make jre-download 自动下载）
+├── scripts/
+│   └── package-linux.sh         # Linux 打包脚本（tar.gz + run.sh 启动器）
 ├── frontend/
 │   ├── package.json             # Svelte 5 + SvelteKit 2 + Tailwind 4 + Vite 8
 │   ├── svelte.config.js         # adapter-static + 强制 runes 模式
@@ -37,18 +42,18 @@ idb_desktop/
 │   ├── src/
 │   │   ├── app.html
 │   │   ├── lib/
-│   │   │   ├── api/             # 引擎通信 API 层
-│   │   │   │   ├── index.js     # 统一请求封装（SCHEMA/USER/TABLE/DATA/SQL）
+│   │   │   ├── api/             # 引擎通信 API 层（含流式调用）
+│   │   │   │   ├── index.js     # 统一请求封装（invoke + invokeStreaming）
 │   │   │   │   ├── connections.js # 连接管理 API（List/Get/Save/Delete）
 │   │   │   │   └── normalize.js   # 响应数据归一化工具
 │   │   │   ├── components/      # 14 个 Svelte 组件
 │   │   │   │   ├── ConnectionForm.svelte  # 连接管理界面
 │   │   │   │   ├── Sidebar.svelte         # 数据库树形浏览器
-│   │   │   │   ├── DataGrid.svelte        # 数据表格查看/编辑
-│   │   │   │   ├── SqlConsole.svelte      # SQL 控制台（Monaco 编辑器）
+│   │   │   │   ├── DataGrid.svelte        # 数据表格（分页 + 全量流式加载）
+│   │   │   │   ├── SqlConsole.svelte      # SQL 控制台（SELECT 自动流式）
 │   │   │   │   ├── SqlEditor.svelte       # Monaco 编辑器封装
 │   │   │   │   ├── UserPanel.svelte       # 用户与权限管理
-│   │   │   │   ├── TablePanel.svelte      # 表结构编辑器（ALTER TABLE）
+│   │   │   │   ├── TablePanel.svelte      # 表结构编辑器（ALTER TABLE，支持改名）
 │   │   │   │   ├── TableEditor.svelte     # 新建表向导
 │   │   │   │   ├── RowEditor.svelte       # 行插入/编辑表单
 │   │   │   │   ├── Modal.svelte           # 通用模态框
@@ -65,14 +70,16 @@ idb_desktop/
 │   │   │   └── temporal.js      # 时间列类型格式化工具
 │   │   └── routes/
 │   │       ├── +layout.js       # prerender = true
-│   │       ├── +layout.svelte   # 全局布局（主题初始化 + ToastHost）
-│   │       ├── +page.svelte     # 主页面（连接 → 工作台两阶段 UI）
+│   │       ├── +layout.svelte   # 全局布局（主题初始化 + 右键策略 + ToastHost）
+│   │       ├── +page.svelte     # 连接选择页（路由 /）
+│   │       ├── workspace/
+│   │       │   └── +page.svelte # 数据库工作台（路由 /workspace）
 │   │       └── layout.css       # MD3 设计令牌 + Tailwind 4 @theme 注入
 │   ├── static/                  # 静态资产
 │   └── wailsjs/                 # Wails 自动生成的 JS 绑定（go/main + runtime）
 └── build/
     ├── appicon.png
-    ├── windows/                 # 安装器素材、manifest
+    ├── windows/                 # 安装器素材、manifest、NSIS 脚本
     └── darwin/                  # macOS 打包资源
 ```
 
@@ -157,9 +164,18 @@ idb_desktop/
   "id": "uuid-v4-string",
   "success": true,
   "error": null,
+  "stream": false,
+  "end": false,
   "data": {}
 }
 ```
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `stream` | boolean | `false` | `true` 表示当前响应属于流式序列 |
+| `end` | boolean | `false` | `true` 表示流式序列结束，`data` 为 `null` |
+
+普通（非流式）响应中 `stream` 和 `end` 均为 `false`。
 
 ### 5.3 Payload 契约（按 category × action）
 
@@ -175,10 +191,11 @@ idb_desktop/
 | TABLE | LIST | `{}` | 列出 `connection.database` 内的表，返回 `[{name, type}]` |
 | TABLE | LIST | `{ tableName }` | **payload 含 tableName 时自动路由**为列元数据，返回 `[{name, type, size, nullable, isPrimaryKey, defaultValue}]` |
 | DATA | LIST | `{ tableName, page, pageSize }` | **page 从 1 开始**；LOB / 长文本字段引擎自动截断为 `[LOB Data]`；返回 `{ total, page, pageSize, rows: [...] }` |
+| DATA | LIST | `{ tableName, pageSize: 0 }` | **全量流式查询**：触发引擎流式多行响应（`stream:true`），每行含单条数据，末行 `end:true` |
 | DATA | CREATE | `{ tableName, values: { col: val, ... } }` | 单行插入；返回 `{ affectedRows }` |
 | DATA | UPDATE | `{ tableName, changes: {...}, where: {...} }` | 多列条件更新；返回 `{ affectedRows }` |
 | DATA | DELETE | `{ tableName, where: {...} }` | 条件删除；返回 `{ affectedRows }` |
-| SQL | EXECUTE | `{ sql }` | 原生 SQL；查询返回结果集数组，DML/DDL 返回 `{ affectedRows }` |
+| SQL | EXECUTE | `{ sql }` | 非 SELECT：返回 `{ affectedRows }`；SELECT：自动触发流式多行响应（`stream:true`） |
 
 > 退出信号：向 stdin 写一行 `CMD_EXIT`（或关闭 stdin），引擎即自清理退出。所有日志写 stderr，绝不污染 stdout 协议流。
 
@@ -326,11 +343,13 @@ export function err(text) { pushToast('error', text) }
 
 ### 8.5 Wails JS 绑定
 
-`frontend/wailsjs/go/main/App.js` 由 Wails 自动生成，当前暴露 5 个方法：
+`frontend/wailsjs/go/main/App.js` 由 Wails 自动生成，当前暴露 7 个方法：
 
 | 方法 | 用途 |
 |---|---|
-| `FetchDatabaseData(reqJSON)` | 统一引擎中转（SCHEMA/USER/TABLE/DATA/SQL） |
+| `FetchDatabaseData(reqJSON)` | 统一引擎中转（非流式） |
+| `FetchDatabaseDataStreaming(reqJSON)` | 流式引擎中转（流式通过 Wails 事件推送） |
+| `IsDevMode()` | 返回是否为 dev 构建（用于前端右键策略等） |
 | `ListConnections()` | 列出已保存的连接（密码脱敏） |
 | `GetConnectionPassword(id)` | 解密并返回指定连接的密码 |
 | `SaveConnection(input)` | 创建/更新连接配置（密码自动加密） |
@@ -347,7 +366,7 @@ export function err(text) { pushToast('error', text) }
 2. **大字段熔断**
    `BLOB` / `CLOB` / `BYTEA` 或长度 > 2048 字符的文本，引擎层在序列化 JSON 时必须截断为占位 `[LOB Data / Multi-Text Context]`；前端渲染为 MD3 放大镜图标，用户点击触发**单行精准查询**。规避 stdin/stdout 缓冲区被打爆导致 Wails 假死。
 3. **分页强约束**
-   单页上限 `pageSize ≤ 1000`（当前默认 100 行/页）；前端表格目前使用标准 `<table>` 渲染，虚拟滚动（virtual list）待后续引入以保证大列宽表 DOM 节点常量级。
+   单页上限 `pageSize ≤ 1000`（当前默认 20 行/页，可选 20/50/100/200/500/全量）；前端表格目前使用标准 `<table>` 渲染，虚拟滚动（virtual list）待后续引入以保证大列宽表 DOM 节点常量级。
 4. **凭证生命周期**
    `password` 仅存在于前端 Store + 单次请求 envelope；引擎落到磁盘 / 日志的内容必须脱敏（连接串中的密码字段在 panic / error 路径中务必抹除）。
 5. **进程边界纪律**
@@ -361,11 +380,20 @@ export function err(text) { pushToast('error', text) }
 ### 10.1 常用命令（Windows / bash）
 
 ```bash
-# 开发模式（带热重载，devtools 可访问 Go 绑定）
+# 开发模式（带热重载，devtools 可访问 Go 绑定，右键可用）
 wails dev
 
-# 生产构建
-wails build
+# 生产构建（含 devtools 支持）
+wails build -devtools
+
+# Makefile 构建（推荐）
+make dev               # 开发模式
+make build             # 当前平台构建
+make package-windows   # Windows NSIS 安装包
+make package-linux     # Linux tar.gz 分发包
+make package-all       # 全平台
+make jre-download      # 下载 Azul Zulu JRE 21
+make clean             # 清理构建产物
 
 # 仅前端开发（不通过 wails，调试样式时方便）
 cd frontend && npm run dev
@@ -388,19 +416,20 @@ cd frontend && npm run lint
 | 模块 | 状态 |
 |---|---|
 | Wails 项目骨架 | ✅ 已搭建（main.go / app.go / wails.json） |
-| SvelteKit + Svelte 5 + Tailwind 4 | ✅ 完整 SPA 架构，单页面两阶段 UI |
-| Go ↔ JVM 子进程管道 | ✅ 已实装（异步并发协议，id 路由，8MB 行缓冲） |
-| JSON 协议处理器 | ✅ 前端 API 层完整封装（SCHEMA / USER / TABLE / DATA / SQL） |
+| SvelteKit + Svelte 5 + Tailwind 4 | ✅ 完整 SPA，双路由（连接页 + 工作台） |
+| Go ↔ JVM 子进程管道 | ✅ 异步并发协议 + 流式响应（id 路由，事件推送） |
+| JSON 协议处理器 | ✅ 前端 API 层完整封装（invoke + invokeStreaming） |
 | 连接配置持久化 | ✅ 加密存储（Windows DPAPI / AES-256-GCM），CRUD 完整 |
 | 连接管理界面 | ✅ 连接列表 + 表单 + 密码保存 + 删除确认 |
 | 数据库树形浏览器 | ✅ 三级懒加载（Schema → Table → Column），右键菜单，筛选 |
-| 数据表格查看/编辑 | ✅ 分页 + 类型感知渲染 + LOB 熔断查看 + 行 CRUD |
-| SQL 控制台 | ✅ Monaco 编辑器 + 智能补全 + 多语句执行 + SQL 格式化 |
-| 表结构编辑 | ✅ Draft 模式列编辑器 + 新建表向导 |
+| 数据表格查看/编辑 | ✅ 分页（20/50/100/200/500） + 全量流式加载 + 行 CRUD |
+| SQL 控制台 | ✅ Monaco 编辑器 + 智能补全 + 多语句执行 + SELECT 流式 |
+| 表结构编辑 | ✅ Draft 模式列编辑器 + 新建表向导 + 字段改名 |
 | 用户与权限管理 | ✅ 用户列表 + GRANT/REVOKE 模态框 |
 | MD3 Token / Tailwind theme | ✅ 完整 MD3 令牌注入 + 亮色/暗色/自动主题 |
-| 上下文菜单 / Toast 通知 | ✅ 全局右键菜单 + Toast 通知系统 |
+| 上下文菜单 / Toast 通知 | ✅ 右键菜单（dev 模式可用原生菜单） + Toast |
 | 只读系统库保护 | ✅ MySQL 系统 schema 写操作拦截 |
-| 虚拟滚动 | ⏳ 未实现（当前标准 table 渲染，100 行/页） |
-| 精简 JRE 捆绑 | ⏳ `engine/jre/` 目录未就绪，需单独安装 Java |
-| 打包脚本（embed jar + jre） | ⏳ 未配置 |
+| NSIS 安装包 | ✅ Windows 安装包（含 engine 打包 + 快捷方式选项） |
+| Linux 分发包 | ✅ tar.gz + run.sh 启动器 |
+| Makefile 自动化 | ✅ 双平台构建 + Azul Zulu JRE 自动下载 |
+| 虚拟滚动 | ⏳ 未实现（当前标准 table 渲染） |

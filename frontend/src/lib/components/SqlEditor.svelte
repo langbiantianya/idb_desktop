@@ -58,6 +58,15 @@
 			if (cancelled || !host) return;
 			monacoNS = monaco;
 
+			// 在 Monaco 初始化前注册 capture 阶段 F12 监听，阻止 Monaco 消费 F12（Go to Definition），
+			// 让 F12 传递到 WebView2 打开 DevTools。
+			host.addEventListener('keydown', (e) => {
+				if (e.key === 'F12' || e.keyCode === 123) {
+					e.stopImmediatePropagation();
+					// 不调用 e.preventDefault()，让浏览器/WebView2 原生处理 F12（打开 DevTools）
+				}
+			}, true); // capture: true，优先于 Monaco 的 keydown
+
 			defineThemes(monaco);
 
 			editor = monaco.editor.create(host, {

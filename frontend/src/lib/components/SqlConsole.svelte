@@ -1,5 +1,5 @@
 <script>
-	import { executeSql, listSchemas, listTables, listColumns } from '$lib/api';
+	import { executeSql, executeSqlStreaming, listSchemas, listTables, listColumns } from '$lib/api';
 	import {
 		asSqlResult,
 		asStringList,
@@ -333,6 +333,14 @@
 		return out;
 	}
 
+	/**
+	 * 判断 SQL 是否为 SELECT 查询（走流式响应）。
+	 * @param {string} stmt
+	 */
+	function isSelectStmt(stmt) {
+		return /^\s*SELECT\b/i.test(stmt);
+	}
+
 	async function run() {
 		const selected = (editorRef?.getSelectedText() ?? '').trim();
 		const source = (selected || sql).trim();
@@ -356,13 +364,37 @@
 		try {
 			for (const stmt of stmts) {
 				try {
-					const resp = await executeSql(schemaConn, stmt);
-					if (!resp.success) {
-						collected.push({ sql: stmt, success: false, error: resp.error ?? 'SQL 执行失败', rows: [], columns: [], affectedRows: null });
-						continue;
+					if (isSelectStmt(stmt)) {
+						// SELECT 走流式响应
+						const accRows = [];
+						const colSet = new Set();
+						const resp = await executeSqlStreaming(schemaConn, stmt, (data) => {
+							if (data && typeof data === 'object') {
+								const d = /** @type {Record<string, unknown>} */ (data);
+								const rowArr = Array.isArray(d.rows) ? d.rows : [];
+								for (const row of rowArr) {
+									accRows.push(row);
+									if (row && typeof row === 'object') {
+										for (const k of Object.keys(row)) colSet.add(k);
+									}
+								}
+							}
+						});
+						if (!resp.success) {
+							collected.push({ sql: stmt, success: false, error: resp.error ?? 'SQL 执行失败', rows: [], columns: [], affectedRows: null });
+						} else {
+							collected.push({ sql: stmt, success: true, error: null, rows: accRows, columns: [...colSet], affectedRows: null });
+						}
+					} else {
+						// 非 SELECT 走普通响应
+						const resp = await executeSql(schemaConn, stmt);
+						if (!resp.success) {
+							collected.push({ sql: stmt, success: false, error: resp.error ?? 'SQL 执行失败', rows: [], columns: [], affectedRows: null });
+							continue;
+						}
+						const r = asSqlResult(resp.data);
+						collected.push({ sql: stmt, success: true, error: null, rows: r.rows, columns: r.columns, affectedRows: r.affectedRows });
 					}
-					const r = asSqlResult(resp.data);
-					collected.push({ sql: stmt, success: true, error: null, rows: r.rows, columns: r.columns, affectedRows: r.affectedRows });
 				} catch (e) {
 					collected.push({ sql: stmt, success: false, error: e instanceof Error ? e.message : String(e), rows: [], columns: [], affectedRows: null });
 				}

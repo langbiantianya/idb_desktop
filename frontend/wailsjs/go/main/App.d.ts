@@ -6,7 +6,11 @@ export function DeleteConnection(arg1:string):Promise<void>;
 
 export function FetchDatabaseData(arg1:string):Promise<string>;
 
+export function FetchDatabaseDataStreaming(arg1:string):Promise<string>;
+
 export function GetConnectionPassword(arg1:string):Promise<string>;
+
+export function IsDevMode():Promise<boolean>;
 
 export function ListConnections():Promise<Array<main.SavedConnection>>;
 

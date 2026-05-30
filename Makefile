@@ -64,7 +64,7 @@ deps:
 
 .PHONY: build
 build: deps frontend-build
-	wails build
+	wails build -devtools
 	@echo "=== 构建完成: $(BUILD_DIR)/ ==="
 
 .PHONY: frontend-build
@@ -123,7 +123,7 @@ endif
 package-windows: deps jre-download
 	@echo "=== 构建 Windows amd64 安装包 ==="
 	@# 确保当前宿主为 Windows 或启用了交叉编译
-	wails build --platform windows/amd64 --nsis
+	wails build --platform windows/amd64 --nsis -devtools
 	@echo "=== Windows 安装包: $(BUILD_DIR)/$(APP_NAME)-amd64-installer.exe ==="
 
 # =============================================================================
@@ -133,7 +133,7 @@ package-windows: deps jre-download
 .PHONY: package-linux
 package-linux: deps
 	@echo "=== 构建 Linux amd64 分发包 ==="
-	wails build --platform linux/amd64
+	wails build --platform linux/amd64 -devtools
 	@echo "=== 打包 tar.gz ==="
 	bash scripts/package-linux.sh "$(APP_NAME)" "$(VERSION)" "$(BUILD_DIR)" "$(ENGINE_DIR)"
 	@echo "=== Linux 分发包: $(BUILD_DIR)/$(APP_NAME)-linux-amd64-v$(VERSION).tar.gz ==="

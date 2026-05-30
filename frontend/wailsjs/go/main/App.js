@@ -10,8 +10,16 @@ export function FetchDatabaseData(arg1) {
   return window['go']['main']['App']['FetchDatabaseData'](arg1);
 }
 
+export function FetchDatabaseDataStreaming(arg1) {
+  return window['go']['main']['App']['FetchDatabaseDataStreaming'](arg1);
+}
+
 export function GetConnectionPassword(arg1) {
   return window['go']['main']['App']['GetConnectionPassword'](arg1);
+}
+
+export function IsDevMode() {
+  return window['go']['main']['App']['IsDevMode']();
 }
 
 export function ListConnections() {

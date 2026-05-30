@@ -5,7 +5,8 @@
 		createRow,
 		updateRow,
 		deleteRow,
-		executeSql
+		executeSql,
+		listDataStreaming
 	} from '$lib/api';
 	import { asDataPage, asColumnList, asSqlResult, isLob, renderCell } from '$lib/api/normalize.js';
 	import { formatTemporal, temporalKind } from '$lib/temporal.js';
@@ -29,7 +30,7 @@
 	/** @type {Props} */
 	let { schemaConn, schemaName, tableName, reloadKey = 0 } = $props();
 
-	const PAGE_SIZE_OPTIONS = [20, 50, 100, 200, 500];
+	const PAGE_SIZE_OPTIONS = [20, 50, 100, 200, 500, 0];
 
 	let page = $state(1);
 	let pageSize = $state(20);
@@ -38,14 +39,24 @@
 	let columns = $state(/** @type {string[]} */ ([]));
 	let columnMeta = $state(/** @type {ColumnMeta[]} */ ([]));
 	let pending = $state(false);
+	let streaming = $state(false);
+	let streamedRowCount = $state(0);
 
 	let inserting = $state(false);
 	let editing = $state(/** @type {Record<string, unknown> | null} */ (null));
 	let confirmDelete = $state(/** @type {Record<string, unknown> | null} */ (null));
 	let actionPending = $state(false);
 
-	let lobView = $state(/** @type {{ column: string; row: Record<string, unknown>; loading: boolean; value: unknown } | null} */ (null));
-	let cellCtx = $state(/** @type {{ x: number; y: number; row: Record<string, unknown>; col: string; value: unknown; selection: string } | null} */ (null));
+	let lobView = $state(
+		/** @type {{ column: string; row: Record<string, unknown>; loading: boolean; value: unknown } | null} */ (
+			null
+		)
+	);
+	let cellCtx = $state(
+		/** @type {{ x: number; y: number; row: Record<string, unknown>; col: string; value: unknown; selection: string } | null} */ (
+			null
+		)
+	);
 	let headerCtx = $state(/** @type {{ x: number; y: number; col: string } | null} */ (null));
 
 	let pkColumns = $derived(columnMeta.filter((c) => c.isPrimaryKey).map((c) => c.name));
@@ -84,19 +95,21 @@
 	}
 
 	// 仅当 schemaConn / tableName / reloadKey 变化时才重置分页并重载；
-	// gotoPage / changePageSize 只更新对应状态，由 effect 统一触发 load。
+	// gotoPage / changePageSize 只更新状态，直接调用 load / loadStreaming，不经过 effect。
 	let _prevSig = $state('');
 	$effect(() => {
 		const sig = `${schemaConn.driver}|${schemaConn.host}|${schemaConn.port}|${schemaConn.database}|${tableName}|${reloadKey}`;
-		const tableChanged = sig !== _prevSig;
-		if (tableChanged) {
+		if (sig !== _prevSig) {
 			_prevSig = sig;
 			page = 1;
 			total = null;
 			void loadMeta();
+			if (pageSize === 0) {
+				void loadStreaming();
+			} else {
+				void load();
+			}
 		}
-		// page / pageSize 也是依赖，任何变化都触发 load
-		void load();
 	});
 
 	async function load() {
@@ -124,10 +137,51 @@
 		if (resp.success) columnMeta = asColumnList(resp.data);
 	}
 
+	async function loadStreaming() {
+		if (streaming) return;
+		streaming = true;
+		streamedRowCount = 0;
+		rows = [];
+		columns = [];
+		const accRows = [];
+		const colSet = new Set();
+		try {
+			const resp = await listDataStreaming(schemaConn, tableName, (data) => {
+				if (data && typeof data === 'object') {
+					const d = /** @type {Record<string, unknown>} */ (data);
+					if (d.total != null && typeof d.total === 'number') total = d.total;
+					const rowArr = Array.isArray(d.rows) ? d.rows : [];
+					for (const row of rowArr) {
+						accRows.push(row);
+						if (row && typeof row === 'object') {
+							for (const k of Object.keys(row)) colSet.add(k);
+						}
+					}
+					streamedRowCount = accRows.length;
+					// 每 100 行刷新一次 UI
+					if (accRows.length % 100 === 0) {
+						rows = [...accRows];
+						columns = [...colSet];
+					}
+				}
+			});
+			if (!resp.success) {
+				err(resp.error ?? '流式加载失败');
+			}
+			// 最终刷新
+			rows = accRows;
+			columns = [...colSet];
+		} finally {
+			streaming = false;
+			streamedRowCount = 0;
+		}
+	}
+
 	function gotoPage(p) {
 		if (p < 1 || pending) return;
 		if (totalPages !== null && p > totalPages) return;
 		page = p;
+		load();
 	}
 
 	/** @param {number} newSize */
@@ -136,6 +190,11 @@
 		pageSize = newSize;
 		page = 1;
 		total = null;
+		if (newSize === 0) {
+			loadStreaming();
+		} else {
+			load();
+		}
 	}
 
 	function buildRowWhere(row) {
@@ -217,7 +276,9 @@
 		}
 		lobView = { column, row, loading: true, value: null };
 		try {
-			const where = pkColumns.map((c) => `${quoteIdent(c)} = ${quoteLiteral(row[c])}`).join(' AND ');
+			const where = pkColumns
+				.map((c) => `${quoteIdent(c)} = ${quoteLiteral(row[c])}`)
+				.join(' AND ');
 			const sql = `SELECT ${quoteIdent(column)} FROM ${quoteIdent(tableName)} WHERE ${where} LIMIT 1`;
 			const resp = await executeSql(schemaConn, sql);
 			if (!resp.success) {
@@ -289,58 +350,80 @@
 			<span style="color: var(--md-on-surface-variant);"> · </span>
 			<span class="font-mono" style="color: var(--md-on-surface);">{tableName}</span>
 			{#if pending}
-				<span class="ml-2 animate-pulse text-xs" style="color: var(--md-on-surface-variant);">…</span>
+				<span class="ml-2 animate-pulse text-xs" style="color: var(--md-on-surface-variant);"
+					>…</span
+				>
 			{/if}
 		</h2>
 		<div class="flex items-center gap-1.5">
-			<button
-				class="md-icon-btn"
-				title="上一页"
-				onclick={() => gotoPage(page - 1)}
-				disabled={pending || page <= 1}
-			>
-				◀
-			</button>
-			{#if totalPages !== null && totalPages > 1}
-				<select
-					class="text-xs"
-					style="padding: 0.125rem 0.25rem; border: 1px solid var(--md-outline-variant); border-radius: var(--md-radius-sm); background: var(--md-surface-container-high); color: var(--md-on-surface); cursor: pointer;"
-					value={page}
-					onchange={(e) => gotoPage(Number(e.currentTarget.value))}
+			{#if pageSize > 0}
+				<button
+					class="md-icon-btn"
+					title="上一页"
+					onclick={() => gotoPage(page - 1)}
+					disabled={pending || page <= 1}
 				>
-					{#each { length: totalPages } as _, i}
-						<option value={i + 1}>第 {i + 1} / {totalPages} 页</option>
-					{/each}
-				</select>
-			{:else}
-				<span class="text-xs" style="color: var(--md-on-surface-variant);">
-					第 {page} 页
+					◀
+				</button>
+				{#if totalPages !== null && totalPages > 1}
+					<select
+						class="text-xs"
+						style="padding: 0.125rem 0.25rem; border: 1px solid var(--md-outline-variant); border-radius: var(--md-radius-sm); background: var(--md-surface-container-high); color: var(--md-on-surface); cursor: pointer;"
+						value={page}
+						onchange={(e) => gotoPage(Number(e.currentTarget.value))}
+					>
+						{#each { length: totalPages } as _, i}
+							<option value={i + 1}>第 {i + 1} / {totalPages} 页</option>
+						{/each}
+					</select>
+				{:else}
+					<span class="text-xs" style="color: var(--md-on-surface-variant);">
+						第 {page} 页
+					</span>
+				{/if}
+				<button
+					class="md-icon-btn"
+					title="下一页"
+					onclick={() => gotoPage(page + 1)}
+					disabled={pending || (totalPages !== null ? page >= totalPages : rows.length < pageSize)}
+				>
+					▶
+				</button>
+				{#if total !== null}
+					<span class="text-xs" style="color: var(--md-on-surface-variant);">
+						共 {total.toLocaleString()} 条
+					</span>
+				{/if}
+			{:else if streaming}
+				<span class="animate-pulse text-xs" style="color: var(--md-primary);">
+					加载中 {streamedRowCount.toLocaleString()} 行{total !== null
+						? ` / ${total.toLocaleString()}`
+						: ''}…
 				</span>
-			{/if}
-			{#if total !== null}
+			{:else if total !== null}
 				<span class="text-xs" style="color: var(--md-on-surface-variant);">
 					共 {total.toLocaleString()} 条
 				</span>
 			{/if}
-			<button
-				class="md-icon-btn"
-				title="下一页"
-				onclick={() => gotoPage(page + 1)}
-				disabled={pending || (totalPages !== null ? page >= totalPages : rows.length < pageSize)}
-			>
-				▶
-			</button>
 			<select
-				class="md-input ml-1 text-xs"
+				class="ml-1 md-input text-xs"
 				style="padding: 0.125rem 0.5rem; min-width: 0;"
 				value={pageSize}
 				onchange={(e) => changePageSize(Number(e.currentTarget.value))}
 			>
 				{#each PAGE_SIZE_OPTIONS as opt (opt)}
-					<option value={opt}>{opt} 条/页</option>
+					<option value={opt}>{opt === 0 ? '全量' : `${opt} 条/页`}</option>
 				{/each}
 			</select>
-			<button class="md-icon-btn" title="刷新" onclick={() => load()} disabled={pending}>
+			<button
+				class="md-icon-btn"
+				title="刷新"
+				onclick={() => {
+					if (pageSize === 0) loadStreaming();
+					else load();
+				}}
+				disabled={pending || streaming}
+			>
 				↻
 			</button>
 			{#if readOnly}
@@ -348,6 +431,7 @@
 			{:else}
 				<button
 					class="md-btn-filled"
+					style="padding: 0.125rem 0.5rem; font-size: 0.75rem;"
 					onclick={() => (inserting = true)}
 					disabled={columns.length === 0 && columnMeta.length === 0}
 				>
@@ -375,13 +459,13 @@
 						<tr>
 							{#each columns as col (col)}
 								<th
-									class="px-3 py-2 font-medium whitespace-nowrap font-mono"
+									class="px-3 py-2 font-mono font-medium whitespace-nowrap"
 									style="border-bottom: 1px solid var(--md-outline-variant);"
 									oncontextmenu={(e) => openHeaderCtx(e, col)}
 								>
 									{col}
 									{#if pkColumns.includes(col)}
-										<span class="md-chip-pk ml-1">PK</span>
+										<span class="ml-1 md-chip-pk">PK</span>
 									{/if}
 								</th>
 							{/each}
@@ -399,7 +483,9 @@
 						{#each rows as row, i (i)}
 							<tr
 								class="row-hover"
-								style:background={i % 2 === 0 ? 'transparent' : 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}
+								style:background={i % 2 === 0
+									? 'transparent'
+									: 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}
 							>
 								{#each columns as col (col)}
 									<td
@@ -424,7 +510,9 @@
 								{#if !readOnly}
 									<td
 										class="sticky right-0 px-3 py-1.5"
-										style:background={i % 2 === 0 ? 'var(--md-surface)' : 'var(--md-surface-container-low)'}
+										style:background={i % 2 === 0
+											? 'var(--md-surface)'
+											: 'var(--md-surface-container-low)'}
 										style="border-bottom: 1px solid var(--md-outline-variant);"
 									>
 										<div class="flex gap-2 text-xs">
@@ -504,42 +592,102 @@
 	{:else}
 		<pre
 			class="max-h-[60vh] overflow-auto p-3 font-mono text-xs whitespace-pre-wrap"
-			style="background: var(--md-surface-container-lowest); color: var(--md-on-surface); border-radius: var(--md-radius-sm); border: 1px solid var(--md-outline-variant);"
-		>{String(lobView?.value)}</pre>
+			style="background: var(--md-surface-container-lowest); color: var(--md-on-surface); border-radius: var(--md-radius-sm); border: 1px solid var(--md-outline-variant);">{String(
+				lobView?.value
+			)}</pre>
 	{/if}
 </Modal>
+
+<ContextMenu
+	open={cellCtx
+		? {
+				x: cellCtx.x,
+				y: cellCtx.y,
+				items: [
+					cellCtx?.selection
+						? {
+								label: '复制选中文本',
+								icon: '⧉',
+								onClick: () => {
+									if (cellCtx) copyText(cellCtx.selection);
+								}
+							}
+						: {
+								label: '复制',
+								icon: '⧉',
+								onClick: () => {
+									if (cellCtx) copyCell(cellCtx.col, cellCtx.value);
+								}
+							},
+					{
+						label: '复制此行',
+						icon: '⊟',
+						onClick: () => {
+							if (cellCtx) copyText(rowToTsv(cellCtx.row), '已复制此行');
+						}
+					},
+					{
+						label: '复制列名',
+						icon: '⧉',
+						onClick: () => {
+							if (cellCtx) copyCell(cellCtx.col, cellCtx.col);
+						}
+					},
+					cellCtx?.value !== null && cellCtx?.value !== undefined && isLob(cellCtx.value)
+						? {
+								label: '查看完整内容',
+								icon: '⊕',
+								onClick: () => {
+									if (cellCtx) openLob(cellCtx.row, cellCtx.col);
+								}
+							}
+						: null,
+					!readOnly
+						? {
+								label: '编辑此行',
+								icon: '✎',
+								onClick: () => {
+									if (cellCtx) editing = cellCtx.row;
+								}
+							}
+						: null,
+					!readOnly
+						? {
+								label: '删除此行',
+								icon: '✕',
+								danger: true,
+								onClick: () => {
+									if (cellCtx) confirmDelete = cellCtx.row;
+								}
+							}
+						: null
+				].filter((i) => i !== null)
+			}
+		: null}
+	onClose={() => (cellCtx = null)}
+/>
+
+<ContextMenu
+	open={headerCtx
+		? {
+				x: headerCtx.x,
+				y: headerCtx.y,
+				items: [
+					{
+						label: '复制列名',
+						icon: '⧉',
+						onClick: () => {
+							if (headerCtx) copyCell(headerCtx.col, headerCtx.col);
+						}
+					}
+				]
+			}
+		: null}
+	onClose={() => (headerCtx = null)}
+/>
 
 <style>
 	tr.row-hover:hover {
 		background: color-mix(in srgb, var(--md-on-surface) 6%, transparent) !important;
 	}
 </style>
-
-<ContextMenu
-	open={cellCtx ? {
-		x: cellCtx.x,
-		y: cellCtx.y,
-		items: [
-			cellCtx?.selection
-				? { label: '复制选中文本', icon: '⧉', onClick: () => { if (cellCtx) copyText(cellCtx.selection); } }
-				: { label: '复制', icon: '⧉', onClick: () => { if (cellCtx) copyCell(cellCtx.col, cellCtx.value); } },
-			{ label: '复制此行', icon: '⊟', onClick: () => { if (cellCtx) copyText(rowToTsv(cellCtx.row), '已复制此行'); } },
-			{ label: '复制列名', icon: '⧉', onClick: () => { if (cellCtx) copyCell(cellCtx.col, cellCtx.col); } },
-			cellCtx?.value !== null && cellCtx?.value !== undefined && isLob(cellCtx.value) ? { label: '查看完整内容', icon: '⊕', onClick: () => { if (cellCtx) openLob(cellCtx.row, cellCtx.col); } } : null,
-			!readOnly ? { label: '编辑此行', icon: '✎', onClick: () => { if (cellCtx) editing = cellCtx.row; } } : null,
-			!readOnly ? { label: '删除此行', icon: '✕', danger: true, onClick: () => { if (cellCtx) confirmDelete = cellCtx.row; } } : null
-		].filter((i) => i !== null)
-	} : null}
-	onClose={() => (cellCtx = null)}
-/>
-
-<ContextMenu
-	open={headerCtx ? {
-		x: headerCtx.x,
-		y: headerCtx.y,
-		items: [
-			{ label: '复制列名', icon: '⧉', onClick: () => { if (headerCtx) copyCell(headerCtx.col, headerCtx.col); } }
-		]
-	} : null}
-	onClose={() => (headerCtx = null)}
-/>
