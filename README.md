@@ -134,5 +134,3 @@ idb_desktop/
 ```
 
 ---
-
-## License
