@@ -3,6 +3,7 @@
 
 import { FetchDatabaseData, FetchDatabaseDataStreaming } from '../../../wailsjs/go/main/App.js';
 import { EventsOn, EventsOnce, EventsOff } from '../../../wailsjs/runtime/runtime.js';
+import { validateWhere, validateOrderBy } from '../sqlValidate.js';
 
 /** @typedef {'Mysql' | 'Postgres'} Driver */
 /** @typedef {'SCHEMA' | 'USER' | 'TABLE' | 'DATA' | 'SQL'} Category */
@@ -55,6 +56,11 @@ function uuid() {
 		const v = c === 'x' ? r : (r & 0x3) | 0x8;
 		return v.toString(16);
 	});
+}
+
+/** 构造前端校验失败的合成错误响应，避免请求打到引擎。 */
+function validationError(msg) {
+	return { id: uuid(), success: false, error: msg, data: null };
 }
 
 /**
@@ -261,13 +267,27 @@ export const getTableDdl = (connection, tableName) =>
 
 /**
  * 分页拉取。page 从 1 开始；pageSize 上限 1000（CLAUDE.md §9）。
+ * opts.where / opts.orderBy 为可选 SQL 片段，前端先做方言级校验。
  * @param {ConnectionConfig} connection
  * @param {string} tableName
  * @param {number} [page]
  * @param {number} [pageSize]
+ * @param {{ where?: string; orderBy?: string }} [opts]
  */
-export const listData = (connection, tableName, page = 1, pageSize = 20) =>
-	invoke('DATA', 'LIST', connection, { tableName, page, pageSize });
+export function listData(connection, tableName, page = 1, pageSize = 20, opts = {}) {
+	if (opts.where) {
+		const err = validateWhere(opts.where, connection.driver);
+		if (err) return Promise.resolve(validationError(err));
+	}
+	if (opts.orderBy) {
+		const err = validateOrderBy(opts.orderBy, connection.driver);
+		if (err) return Promise.resolve(validationError(err));
+	}
+	const payload = { tableName, page, pageSize };
+	if (opts.where) payload.where = opts.where;
+	if (opts.orderBy) payload.orderBy = opts.orderBy;
+	return invoke('DATA', 'LIST', connection, payload);
+}
 
 /**
  * @param {ConnectionConfig} connection
@@ -303,13 +323,27 @@ export const executeSql = (connection, sql) => invoke('SQL', 'EXECUTE', connecti
 
 /**
  * 全量拉取表数据（pageSize=0 触发引擎流式响应）。
+ * opts.where / opts.orderBy 为可选 SQL 片段，前端先做方言级校验。
  * @param {ConnectionConfig} connection
  * @param {string} tableName
  * @param {(data: unknown) => void} onRow
+ * @param {{ where?: string; orderBy?: string }} [opts]
  * @returns {Promise<Response>}
  */
-export const listDataStreaming = (connection, tableName, onRow) =>
-	invokeStreaming('DATA', 'LIST', connection, { tableName, page: 1, pageSize: 0 }, onRow);
+export function listDataStreaming(connection, tableName, onRow, opts = {}) {
+	if (opts.where) {
+		const err = validateWhere(opts.where, connection.driver);
+		if (err) return Promise.resolve(validationError(err));
+	}
+	if (opts.orderBy) {
+		const err = validateOrderBy(opts.orderBy, connection.driver);
+		if (err) return Promise.resolve(validationError(err));
+	}
+	const payload = { tableName, page: 1, pageSize: 0 };
+	if (opts.where) payload.where = opts.where;
+	if (opts.orderBy) payload.orderBy = opts.orderBy;
+	return invokeStreaming('DATA', 'LIST', connection, payload, onRow);
+}
 
 /**
  * 流式执行 SQL（SELECT 自动走流式，非 SELECT 正常返回）。

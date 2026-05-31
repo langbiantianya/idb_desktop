@@ -22,10 +22,11 @@
 	 * @property {() => void} [onFormat]
 	 * @property {(ctx: CompletionContext) => Suggestion[] | Promise<Suggestion[]>} [getSuggestions]
 	 * @property {string} [placeholder]
+	 * @property {boolean} [singleLine]
 	 */
 
 	/** @type {Props} */
-	let { value, onValueChange, onCtrlEnter, onFormat, getSuggestions, placeholder } = $props();
+	let { value, onValueChange, onCtrlEnter, onFormat, getSuggestions, placeholder, singleLine = false } = $props();
 
 	/** 父组件可通过 `bind:this` 调用：拿到当前选中的文本（无选中返回空串）。 */
 	export function getSelectedText() {
@@ -78,20 +79,43 @@
 				fontSize: 13,
 				fontFamily:
 					"'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, 'Courier New', monospace",
-				lineNumbers: 'on',
+				lineNumbers: singleLine ? 'off' : 'on',
 				scrollBeyondLastLine: false,
 				smoothScrolling: true,
-				renderLineHighlight: 'all',
-				wordWrap: 'on',
+				renderLineHighlight: singleLine ? 'none' : 'all',
+				wordWrap: singleLine ? 'off' : 'on',
 				tabSize: 2,
 				suggestOnTriggerCharacters: true,
 				quickSuggestions: { other: true, comments: false, strings: false },
-				placeholder: placeholder ?? ''
+				placeholder: placeholder ?? '',
+				...(singleLine && {
+					folding: false,
+					scrollbar: { vertical: 'hidden', horizontal: 'hidden' },
+					overviewRulerLanes: 0,
+					hideCursorInOverviewRuler: true,
+					overviewRulerBorder: false,
+					glyphMargin: false,
+					contextmenu: false
+				})
 			});
+
+			// 单行模式：阻止 Enter 插入换行
+			if (singleLine) {
+				editor.addCommand(monaco.KeyCode.Enter, () => {
+					onCtrlEnter?.();
+				});
+			}
 
 			modelChangeDisposer = editor.onDidChangeModelContent(() => {
 				if (suspendIncoming) return;
-				const v = editor?.getValue() ?? '';
+				let v = editor?.getValue() ?? '';
+				// 单行模式：剥离换行（粘贴多行文本时只保留第一行）
+				if (singleLine && v.includes('\n')) {
+					v = v.replace(/\n/g, ' ').replace(/\r/g, '');
+					suspendIncoming = true;
+					editor.setValue(v);
+					suspendIncoming = false;
+				}
 				onValueChange(v);
 			});
 
@@ -259,7 +283,7 @@
 	}
 </script>
 
-<div bind:this={host} class="monaco-host"></div>
+<div bind:this={host} class="monaco-host" class:single-line={singleLine}></div>
 
 <style>
 	.monaco-host {
@@ -268,6 +292,10 @@
 		min-height: 12rem;
 		border: none;
 		overflow: hidden;
+	}
+	.monaco-host.single-line {
+		min-height: 0;
+		height: 1.75rem;
 	}
 	.monaco-host :global(.monaco-editor),
 	.monaco-host :global(.monaco-editor .overflow-guard) {

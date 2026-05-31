@@ -1,19 +1,29 @@
 /**
  * SQL 补全项配置：按数据库驱动返回差异化的关键字与函数列表。
- * 通用项 + 驱动专属项在运行时合并，避免在组件内硬编码。
+ * 按上下文分组：表达式级（WHERE 可用）、子句级（ORDER BY 等）、DDL/DML 级。
  */
 
-/** @type {string[]} 通用 SQL 关键字 */
-const COMMON_KEYWORDS = [
-	'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET',
-	'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM',
-	'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'OUTER JOIN', 'ON',
-	'AS', 'AND', 'OR', 'NOT', 'NULL', 'IS NULL', 'IS NOT NULL',
-	'IN', 'BETWEEN', 'LIKE', 'EXISTS', 'DISTINCT', 'UNION', 'UNION ALL',
-	'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'ASC', 'DESC', 'TRUE', 'FALSE'
+// ─── 表达式级关键字（WHERE / HAVING 条件中合法） ───
+const EXPR_KEYWORDS = [
+	'AND', 'OR', 'NOT', 'NULL', 'IS NULL', 'IS NOT NULL',
+	'IN', 'BETWEEN', 'LIKE', 'EXISTS', 'DISTINCT',
+	'TRUE', 'FALSE',
+	'CASE', 'WHEN', 'THEN', 'ELSE', 'END'
 ];
 
-/** @type {string[]} 通用 SQL 函数 */
+// ─── 子句级关键字（SELECT 语句结构，不用于 WHERE 条件内部） ───
+const CLAUSE_KEYWORDS = [
+	'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET',
+	'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'OUTER JOIN', 'ON',
+	'AS', 'UNION', 'UNION ALL', 'ASC', 'DESC'
+];
+
+// ─── DDL/DML 级关键字（写操作，只读场景不提示） ───
+const DML_KEYWORDS = [
+	'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM'
+];
+
+// ─── 通用 SQL 函数 ───
 const COMMON_FUNCTIONS = [
 	'COUNT', 'SUM', 'AVG', 'MIN', 'MAX',
 	'NOW', 'CURRENT_DATE', 'CURRENT_TIMESTAMP',
@@ -21,15 +31,14 @@ const COMMON_FUNCTIONS = [
 	'UPPER', 'LOWER', 'LENGTH', 'TRIM', 'SUBSTRING', 'CONCAT'
 ];
 
-/** @type {string[]} MySQL 专属关键字 */
+// ─── MySQL 专属 ───
 const MYSQL_KEYWORDS = [
 	'RLIKE', 'REGEXP', 'SOUNDS LIKE', 'XOR',
 	'IGNORE', 'FORCE', 'USE INDEX', 'STRAIGHT_JOIN',
 	'DESCRIBE', 'EXPLAIN', 'SHOW', 'TRUNCATE',
 	'AUTO_INCREMENT', 'IF NOT EXISTS', 'REPLACE'
 ];
-
-/** @type {string[]} MySQL 专属函数 */
+const MYSQL_EXPR_KEYWORDS = ['RLIKE', 'REGEXP'];
 const MYSQL_FUNCTIONS = [
 	'IFNULL', 'IF', 'GROUP_CONCAT', 'CONVERT',
 	'UNIX_TIMESTAMP', 'FROM_UNIXTIME', 'DATE_FORMAT', 'STR_TO_DATE',
@@ -38,19 +47,17 @@ const MYSQL_FUNCTIONS = [
 	'ROW_NUMBER', 'RANK', 'DENSE_RANK', 'LEAD', 'LAG'
 ];
 
-/** @type {string[]} PostgreSQL 专属关键字 */
+// ─── PostgreSQL 专属 ───
 const PG_KEYWORDS = [
 	'ILIKE', 'SIMILAR TO',
 	'LATERAL', 'WITH', 'RECURSIVE',
 	'RETURNING', 'CONFLICT', 'DO NOTHING', 'DO UPDATE SET',
 	'VACUUM', 'ANALYZE', 'EXPLAIN', 'VERBOSE',
-	'TRUE', 'FALSE', 'BOOLEAN',
-	'TYPE', 'CREATE TYPE', 'ENUM',
+	'BOOLEAN', 'TYPE', 'CREATE TYPE', 'ENUM',
 	'MATERIALIZED VIEW', 'REFRESH MATERIALIZED VIEW',
 	'WINDOW'
 ];
-
-/** @type {string[]} PostgreSQL 专属函数 */
+const PG_EXPR_KEYWORDS = ['ILIKE', 'SIMILAR TO'];
 const PG_FUNCTIONS = [
 	'COALESCE', 'NULLIF', 'GREATEST', 'LEAST',
 	'STRING_AGG', 'ARRAY_AGG', 'JSONB_AGG', 'JSON_AGG',
@@ -59,19 +66,53 @@ const PG_FUNCTIONS = [
 	'GENERATE_SERIES', 'UNNEST',
 	'ROW_NUMBER', 'RANK', 'DENSE_RANK', 'LEAD', 'LAG',
 	'REGEXP_REPLACE', 'REGEXP_MATCHES', 'SPLIT_PART',
-	'NOW', 'CLOCK_TIMESTAMP', 'STATEMENT_TIMESTAMP',
-	'COALESCE', 'NULLIF'
+	'NOW', 'CLOCK_TIMESTAMP', 'STATEMENT_TIMESTAMP'
 ];
 
 /**
- * 根据驱动返回合并后的补全项。
+ * 合并并去重两个字符串数组。
+ * @param {string[]} a
+ * @param {string[]} b
+ * @returns {string[]}
+ */
+function mergeUnique(a, b) {
+	return [...new Set([...a, ...b])];
+}
+
+/**
+ * SqlConsole 通用补全（全量关键字 + 函数）。
  * @param {'Mysql' | 'Postgresql'} driver
  * @returns {{ keywords: string[], functions: string[] }}
  */
 export function getCompletionItems(driver) {
 	const isPg = driver === 'Postgresql';
 	return {
-		keywords: [...COMMON_KEYWORDS, ...(isPg ? PG_KEYWORDS : MYSQL_KEYWORDS)],
-		functions: [...COMMON_FUNCTIONS, ...(isPg ? PG_FUNCTIONS : MYSQL_FUNCTIONS)]
+		keywords: mergeUnique(
+			[...EXPR_KEYWORDS, ...CLAUSE_KEYWORDS, ...DML_KEYWORDS],
+			isPg ? PG_KEYWORDS : MYSQL_KEYWORDS
+		),
+		functions: mergeUnique(COMMON_FUNCTIONS, isPg ? PG_FUNCTIONS : MYSQL_FUNCTIONS)
 	};
+}
+
+/**
+ * WHERE 子句专用补全：仅表达式级关键字 + 函数，不含 ORDER BY / GROUP BY 等。
+ * @param {'Mysql' | 'Postgresql'} driver
+ * @returns {{ keywords: string[], functions: string[] }}
+ */
+export function getWhereCompletionItems(driver) {
+	const isPg = driver === 'Postgresql';
+	return {
+		keywords: mergeUnique(EXPR_KEYWORDS, isPg ? PG_EXPR_KEYWORDS : MYSQL_EXPR_KEYWORDS),
+		functions: mergeUnique(COMMON_FUNCTIONS, isPg ? PG_FUNCTIONS : MYSQL_FUNCTIONS)
+	};
+}
+
+/**
+ * ORDER BY 子句专用补全：仅列名占位 + ASC/DESC，不含条件表达式。
+ * DataGrid 内自行追加列名，此处只返回关键字部分。
+ * @returns {{ keywords: string[] }}
+ */
+export function getOrderByKeywords() {
+	return { keywords: ['ASC', 'DESC'] };
 }
