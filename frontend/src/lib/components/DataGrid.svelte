@@ -340,9 +340,9 @@
 	}
 </script>
 
-<section class="flex h-full flex-col gap-3">
+<section class="flex h-full flex-col overflow-hidden">
 	<header
-		class="flex items-center justify-between px-3 py-2"
+		class="flex shrink-0 items-center justify-between px-3 py-2"
 		style="background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant);"
 	>
 		<h2 class="text-sm font-medium">
@@ -441,19 +441,15 @@
 		</div>
 	</header>
 
-	<div class="flex-1 overflow-auto px-3 pb-3">
+	<div class="flex-1 overflow-auto pb-3">
 		{#if rows.length === 0 && !pending}
 			<p class="py-8 text-center text-sm" style="color: var(--md-on-surface-variant);">
 				空表 / 当前页无数据
 			</p>
 		{:else if columns.length > 0}
-			<div
-				class="overflow-auto"
-				style="border: 1px solid var(--md-outline-variant); border-radius: var(--md-radius-md);"
-			>
-				<table class="min-w-full text-left text-xs">
+			<table class="min-w-full text-left text-xs">
 					<thead
-						class="sticky top-0"
+						class="sticky top-0 z-10"
 						style="background: var(--md-surface-container); color: var(--md-on-surface-variant);"
 					>
 						<tr>
@@ -472,7 +468,7 @@
 							{#if !readOnly}
 								<th
 									class="sticky right-0 px-3 py-2 font-medium"
-									style="background: var(--md-surface-container); border-bottom: 1px solid var(--md-outline-variant);"
+									style="background: var(--md-surface-container); border-bottom: 1px solid var(--md-outline-variant); z-index: 2;"
 								>
 									操作
 								</th>
@@ -537,7 +533,6 @@
 						{/each}
 					</tbody>
 				</table>
-			</div>
 		{/if}
 	</div>
 </section>

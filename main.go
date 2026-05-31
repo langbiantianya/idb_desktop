@@ -36,9 +36,11 @@ func main() {
 	// 菜单注册移到 app.startup 中通过 runtime.Menu* API 动态追加。
 
 	err := wails.Run(&options.App{
-		Title:  "IDB Desktop",
-		Width:  1024,
-		Height: 768,
+		Title:    "IDB Desktop",
+		Width:    1080,
+		Height:   720,
+		MinWidth: 1080,
+		MinHeight: 720,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

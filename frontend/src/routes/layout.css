@@ -217,6 +217,10 @@ th {
 	user-select: text;
 }
 
+button {
+	white-space: nowrap;
+}
+
 * {
 	border-color: var(--md-outline-variant);
 }

@@ -212,9 +212,6 @@
 					<h1 class="text-2xl font-semibold tracking-tight" style="color: var(--md-on-background);">
 						idb · 数据库管理
 					</h1>
-					<p class="mt-1 text-sm" style="color: var(--md-on-surface-variant);">
-						本地化 · 零端口 · MySQL / PostgreSQL
-					</p>
 				</div>
 				<ThemeToggle />
 			</div>

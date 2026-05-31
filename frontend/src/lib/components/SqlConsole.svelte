@@ -10,6 +10,7 @@
 	} from '$lib/api/normalize.js';
 	import { ok, err } from '$lib/stores/toasts.js';
 	import { isReadOnlySchema, detectWriteKeyword } from '$lib/readonly.js';
+	import { getCompletionItems } from '$lib/sqlCompletion.js';
 	import { format as formatSql } from 'sql-formatter';
 	import SqlEditor from './SqlEditor.svelte';
 	import ContextMenu from './ContextMenu.svelte';
@@ -45,12 +46,17 @@
 
 	let results = $state(/** @type {StatementResult[]} */ ([]));
 	let activeResultIdx = $state(0);
-	let cellCtx = $state(/** @type {{ x: number; y: number; col: string; value: unknown } | null} */ (null));
+	let cellCtx = $state(
+		/** @type {{ x: number; y: number; row: Record<string, unknown>; col: string; value: unknown; selection: string } | null} */ (
+			null
+		)
+	);
 	let headerCtx = $state(/** @type {{ x: number; y: number; col: string } | null} */ (null));
 
-	function openCellCtx(e, col, value) {
+	function openCellCtx(e, row, col, value) {
 		e.preventDefault();
-		cellCtx = { x: e.clientX, y: e.clientY, col, value };
+		const sel = (typeof window !== 'undefined' ? window.getSelection()?.toString() : '') ?? '';
+		cellCtx = { x: e.clientX, y: e.clientY, row, col, value, selection: sel };
 	}
 
 	function openHeaderCtx(e, col) {
@@ -67,28 +73,36 @@
 		}
 	}
 
+	async function copyText(text, label = '已复制') {
+		try {
+			await navigator.clipboard.writeText(text);
+			ok(label);
+		} catch (e) {
+			err(e instanceof Error ? e.message : '复制失败');
+		}
+	}
+
+	/**
+	 * 行序列化为 TSV：tab 分列、列内换行 / tab 转义为字面量；NULL 转空串。
+	 * @param {string[]} columns
+	 * @param {Record<string, unknown>} row
+	 */
+	function rowToTsv(columns, row) {
+		return columns
+			.map((c) => {
+				const v = row[c];
+				if (v === null || v === undefined) return '';
+				return String(v).replace(/\t/g, ' ').replace(/\r?\n/g, ' ');
+			})
+			.join('\t');
+	}
+
 	// 元数据缓存：避免每次按键都去打引擎。schemaConn.database 是当前 tab 绑定的 schema，
 	// 跨 schema 的表 / 列懒加载，结果落到下面两个对象里。
 	let schemas = $state(/** @type {string[]} */ ([]));
 	let tablesBySchema = $state(/** @type {Record<string, string[]>} */ ({}));
 	/** key: "schema.table" → 列名数组 */
 	let columnsByQualifiedTable = $state(/** @type {Record<string, string[]>} */ ({}));
-
-	const SQL_KEYWORDS = [
-		'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'OFFSET',
-		'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM',
-		'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'OUTER JOIN', 'ON',
-		'AS', 'AND', 'OR', 'NOT', 'NULL', 'IS NULL', 'IS NOT NULL',
-		'IN', 'BETWEEN', 'LIKE', 'EXISTS', 'DISTINCT', 'UNION', 'UNION ALL',
-		'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'ASC', 'DESC', 'TRUE', 'FALSE'
-	];
-
-	const SQL_FUNCTIONS = [
-		'COUNT', 'SUM', 'AVG', 'MIN', 'MAX',
-		'NOW', 'CURRENT_DATE', 'CURRENT_TIMESTAMP',
-		'COALESCE', 'NULLIF', 'CAST', 'CONVERT',
-		'UPPER', 'LOWER', 'LENGTH', 'TRIM', 'SUBSTRING', 'CONCAT'
-	];
 
 	// 上一次拉取过的连接键，避免 schemaConn 引用变了但内容相同时重复拉。
 	let lastLoadKey = '';
@@ -241,8 +255,9 @@
 			}
 		}
 
-		for (const f of SQL_FUNCTIONS) items.push({ label: f, kind: 'function' });
-		for (const k of SQL_KEYWORDS) items.push({ label: k, kind: 'keyword' });
+		const { keywords, functions } = getCompletionItems(schemaConn.driver);
+		for (const f of functions) items.push({ label: f, kind: 'function' });
+		for (const k of keywords) items.push({ label: k, kind: 'keyword' });
 		return items;
 	}
 
@@ -250,7 +265,7 @@
 		const trimmed = sql.trim();
 		if (!trimmed) return;
 		try {
-			const language = schemaConn.driver === 'Postgresql' ? 'Postgres' : 'Mysql';
+			const language = schemaConn.driver === 'Postgresql' ? 'postgresql' : 'mysql';
 			const formatted = formatSql(trimmed, {
 				language,
 				keywordCase: 'upper',
@@ -415,7 +430,7 @@
 	}
 </script>
 
-<section class="flex h-full flex-col gap-3">
+<section class="flex h-full flex-col">
 	<header
 		class="flex items-center justify-between px-3 py-2"
 		style="background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant);"
@@ -459,7 +474,7 @@
 		</div>
 	</header>
 
-	<div class="flex flex-col gap-3 px-3 pb-3">
+	<div class="flex min-h-0 flex-1 flex-col overflow-auto">
 		<div class="h-56 w-full">
 			<SqlEditor
 				bind:this={editorRef}
@@ -472,9 +487,11 @@
 			/>
 		</div>
 
+		<hr style="border: none; border-top: 1px solid var(--md-outline-variant); margin: 0;" />
+
 		{#if results.length > 0}
 			{@const cur = results[activeResultIdx] ?? results[0]}
-			<div class="flex flex-col" style="border: 1px solid var(--md-outline-variant); border-radius: var(--md-radius-md); overflow: hidden;">
+			<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 				<nav
 					class="flex shrink-0 items-end gap-px overflow-x-auto"
 					style="background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant);"
@@ -518,7 +535,7 @@
 						受影响行数：{cur.affectedRows}
 					</div>
 				{:else if cur.rows.length > 0 && cur.columns.length > 0}
-					<div class="max-h-[50vh] overflow-auto" style="border-top: 1px solid var(--md-outline-variant);">
+					<div class="min-h-0 flex-1 overflow-auto" style="border-top: 1px solid var(--md-outline-variant);">
 						<table class="min-w-full text-left text-xs">
 							<thead
 								class="sticky top-0"
@@ -543,7 +560,7 @@
 											<td
 												class="max-w-[24rem] truncate px-3 py-1.5 font-mono"
 												style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);"
-												oncontextmenu={(e) => openCellCtx(e, col, row[col])}
+												oncontextmenu={(e) => openCellCtx(e, row, col, row[col])}
 											>
 												{#if isLob(row[col])}
 													<span class="italic" style="color: var(--md-on-surface-variant);">{row[col]}</span>
@@ -567,14 +584,52 @@
 </section>
 
 <ContextMenu
-	open={cellCtx ? {
-		x: cellCtx.x,
-		y: cellCtx.y,
-		items: [
-			{ label: '复制', icon: '⧉', onClick: () => { if (cellCtx) copyValue(cellCtx.value); } },
-			{ label: '复制列名', icon: '⧉', onClick: () => { if (cellCtx) copyValue(cellCtx.col); } }
-		]
-	} : null}
+	open={cellCtx
+		? {
+				x: cellCtx.x,
+				y: cellCtx.y,
+				items: [
+					cellCtx?.selection
+						? {
+								label: '复制选中文本',
+								icon: '⧉',
+								onClick: () => {
+									if (cellCtx) copyText(cellCtx.selection);
+								}
+							}
+						: {
+								label: '复制',
+								icon: '⧉',
+								onClick: () => {
+									if (cellCtx) copyValue(cellCtx.value);
+								}
+							},
+					{
+						label: '复制此行',
+						icon: '⊟',
+						onClick: () => {
+							if (cellCtx) copyText(rowToTsv(results[activeResultIdx]?.columns ?? [], cellCtx.row), '已复制此行');
+						}
+					},
+					{
+						label: '复制列名',
+						icon: '⧉',
+						onClick: () => {
+							if (cellCtx) copyValue(cellCtx.col);
+						}
+					},
+					cellCtx?.value !== null && cellCtx?.value !== undefined && isLob(cellCtx.value)
+						? {
+								label: '查看完整内容',
+								icon: '⊕',
+								onClick: () => {
+									if (cellCtx) copyValue(cellCtx.value);
+								}
+							}
+						: null
+				].filter((i) => i !== null)
+			}
+		: null}
 	onClose={() => (cellCtx = null)}
 />
 

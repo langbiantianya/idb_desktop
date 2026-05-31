@@ -266,12 +266,11 @@
 		width: 100%;
 		height: 100%;
 		min-height: 12rem;
-		border: 1px solid var(--md-outline-variant);
-		border-radius: var(--md-radius-xs);
+		border: none;
 		overflow: hidden;
 	}
 	.monaco-host :global(.monaco-editor),
 	.monaco-host :global(.monaco-editor .overflow-guard) {
-		border-radius: var(--md-radius-xs);
+		border-radius: 0;
 	}
 </style>
