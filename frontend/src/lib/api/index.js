@@ -6,7 +6,7 @@ import { EventsOn, EventsOnce, EventsOff } from '../../../wailsjs/runtime/runtim
 
 /** @typedef {'Mysql' | 'Postgres'} Driver */
 /** @typedef {'SCHEMA' | 'USER' | 'TABLE' | 'DATA' | 'SQL'} Category */
-/** @typedef {'LIST' | 'CREATE' | 'UPDATE' | 'DELETE' | 'EXECUTE'} Action */
+/** @typedef {'LIST' | 'CREATE' | 'UPDATE' | 'DELETE' | 'EXECUTE' | 'GET_DDL'} Action */
 
 /**
  * @typedef {Object} ConnectionConfig
@@ -248,6 +248,14 @@ export const dropTableColumn = (connection, tableName, columnName) =>
  */
 export const deleteTable = (connection, tableName) =>
 	invoke('TABLE', 'DELETE', connection, { tableName });
+
+/**
+ * 获取建表语句（DDL）。
+ * @param {ConnectionConfig} connection
+ * @param {string} tableName
+ */
+export const getTableDdl = (connection, tableName) =>
+	invoke('TABLE', 'GET_DDL', connection, { tableName });
 
 // -------- DATA --------
 

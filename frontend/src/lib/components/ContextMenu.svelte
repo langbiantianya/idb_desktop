@@ -17,6 +17,30 @@
 	/** @type {Props} */
 	let { open, onClose } = $props();
 
+	/** @type {HTMLDivElement | undefined} */
+	let menuEl = $state();
+
+	/** 渲染后自修正：超出右/下边界时翻转方向 */
+	let adjustedX = $state(0);
+	let adjustedY = $state(0);
+
+	$effect(() => {
+		// 依赖 open 触发重新测量
+		const _o = open;
+		if (!_o || !menuEl) return;
+		// 先用原始坐标渲染，下一帧再修正溢出
+		adjustedX = _o.x;
+		adjustedY = _o.y;
+		requestAnimationFrame(() => {
+			if (!menuEl) return;
+			const rect = menuEl.getBoundingClientRect();
+			const vw = window.innerWidth;
+			const vh = window.innerHeight;
+			adjustedX = rect.right > vw ? Math.max(0, _o.x - rect.width) : _o.x;
+			adjustedY = rect.bottom > vh ? Math.max(0, _o.y - rect.height) : _o.y;
+		});
+	});
+
 	function handleItemClick(item) {
 		if (item.disabled) return;
 		item.onClick?.();
@@ -35,9 +59,10 @@
 	></button>
 	<div
 		role="menu"
-		class="fixed z-50 flex min-w-[11rem] flex-col py-1 text-xs"
-		style:left="{open.x}px"
-		style:top="{open.y}px"
+		bind:this={menuEl}
+		class="fixed z-50 flex min-w-[11rem] max-h-[80vh] flex-col overflow-y-auto py-1 text-xs"
+		style:left="{adjustedX}px"
+		style:top="{adjustedY}px"
 		style="background: var(--md-surface-container-high); color: var(--md-on-surface); border: 1px solid var(--md-outline-variant); border-radius: var(--md-radius-md); box-shadow: var(--md-elev-3);"
 	>
 		{#each open.items as item, i (i)}

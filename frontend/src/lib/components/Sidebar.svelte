@@ -1,5 +1,5 @@
 <script>
-	import { listSchemas, listTables, listColumns, createSchema, deleteSchema, deleteTable } from '$lib/api';
+	import { listSchemas, listTables, listColumns, createSchema, deleteSchema, deleteTable, getTableDdl } from '$lib/api';
 	import { asStringList, asTableList, asColumnList } from '$lib/api/normalize.js';
 	import { ok, err } from '$lib/stores/toasts.js';
 	import { isReadOnlySchema } from '$lib/readonly.js';
@@ -367,6 +367,22 @@
 		void copyText(`${quoteIdent(schema)}.${quoteIdent(table)}`);
 	}
 
+	async function menuCopyDdl(schema, table) {
+		closeMenu();
+		try {
+			const conn = { ...baseConn, database: schema };
+			const resp = await getTableDdl(conn, table);
+			if (resp.success && resp.data) {
+				await navigator.clipboard.writeText(String(resp.data));
+				ok('建表语句已复制');
+			} else {
+				err(resp.error ?? '获取建表语句失败');
+			}
+		} catch (e) {
+			err(e instanceof Error ? e.message : '获取建表语句失败');
+		}
+	}
+
 	function openColumnMenu(e, schema, table, column) {
 		e.preventDefault();
 		e.stopPropagation();
@@ -415,7 +431,8 @@
 				{ label: '打开数据', icon: '▦', onClick: () => menuOpenTable(menu.schema, menu.table) },
 				{ label: '修改表结构', icon: '⊞', onClick: () => menuInspectTable(menu.schema, menu.table) },
 				{ label: '刷新表列表', icon: '↻', onClick: () => menuRefreshSchema(menu.schema) },
-				{ label: '复制引用', icon: '⧉', onClick: () => menuCopyTableRef(menu.schema, menu.table) }
+				{ label: '复制引用', icon: '⧉', onClick: () => menuCopyTableRef(menu.schema, menu.table) },
+				{ label: '复制建表语句', icon: '⊕', onClick: () => menuCopyDdl(menu.schema, menu.table) }
 			];
 			if (!ro) {
 				items.push(null);

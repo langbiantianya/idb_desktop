@@ -22,6 +22,11 @@ export function pushToast(kind, text, ttl = 3500) {
 	}, ttl);
 }
 
+/** @param {number} id */
+export function dismissToast(id) {
+	toasts.update((list) => list.filter((t) => t.id !== id));
+}
+
 /** @param {string} text */
 export const ok = (text) => pushToast('ok', text);
 
