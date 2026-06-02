@@ -31,8 +31,11 @@ idb_desktop/
 ├── go.mod / go.sum              # Go 依赖（wails v2.12.0）
 ├── wails.json                   # Wails 项目配置（含 Info 元数据）
 ├── engine/
-│   └── bin/idb-engine.jar       # 底层数据引擎（JVM jar，行分隔 JSON 协议）
-│   └── jre/                     # Azul Zulu JRE（make jre-download 自动下载）
+│   ├── bin/
+│   │   ├── idb-engine.jar        # 底层数据引擎入口（Kotlin + HikariCP + JDBC，行分隔 JSON 协议）
+│   │   ├── libs/                 # 引擎运行时依赖（HikariCP、kotlinx-serialization、logback、SLF4J 等）
+│   │   └── drivers/              # JDBC 驱动（mysql-connector-j、postgresql）
+│   └── jre/                      # Azul Zulu JRE 21（make jre-download 自动下载）
 ├── scripts/
 │   └── package-linux.sh         # Linux 打包脚本（tar.gz + run.sh 启动器）
 ├── frontend/
@@ -46,12 +49,13 @@ idb_desktop/
 │   │   │   │   ├── index.js     # 统一请求封装（invoke + invokeStreaming）
 │   │   │   │   ├── connections.js # 连接管理 API（List/Get/Save/Delete）
 │   │   │   │   └── normalize.js   # 响应数据归一化工具
-│   │   │   ├── components/      # 14 个 Svelte 组件
+│   │   │   ├── components/      # 15 个 Svelte 组件
 │   │   │   │   ├── ConnectionForm.svelte  # 连接管理界面
 │   │   │   │   ├── Sidebar.svelte         # 数据库树形浏览器
-│   │   │   │   ├── DataGrid.svelte        # 数据表格（分页 + 全量流式加载）
+│   │   │   │   ├── DataGrid.svelte        # 数据表格（分页 + 全量流式加载 + 行 CRUD + 列内筛选 + 搜索）；header 双行：标题/工具栏（上）+ WHERE / ORDER BY（下，中间分割线）
 │   │   │   │   ├── SqlConsole.svelte      # SQL 控制台（SELECT 自动流式）
 │   │   │   │   ├── SqlEditor.svelte       # Monaco 编辑器封装
+│   │   │   │   ├── MonacoInput.svelte     # Monaco 单行输入封装（WHERE / ORDER BY 补全）
 │   │   │   │   ├── UserPanel.svelte       # 用户与权限管理
 │   │   │   │   ├── TablePanel.svelte      # 表结构编辑器（ALTER TABLE，支持改名）
 │   │   │   │   ├── TableEditor.svelte     # 新建表向导
@@ -66,8 +70,12 @@ idb_desktop/
 │   │   │   │   ├── themeStore.js # 主题偏好（持久化到 localStorage）
 │   │   │   │   └── toasts.js    # Toast 通知队列
 │   │   │   ├── monaco/setup.js  # Monaco Worker 初始化
-│   │   │   ├── readonly.js      # 只读系统库保护
-│   │   │   └── temporal.js      # 时间列类型格式化工具
+│   │   │   ├── readonly.js      # 只读系统库保护（MySQL 系统 schema + 写关键字检测）
+│   │   │   ├── temporal.js      # 时间列类型格式化工具
+│   │   │   ├── sqlValidate.js   # WHERE / ORDER BY 方言级 SQL 片段校验（引擎侧二次校验前的早判）
+│   │   │   ├── sqlCompletion.js # Monaco 补全项源（按 driver 区分关键字、函数、DDL/DML）
+│   │   │   ├── assets/          # 内联 SVG / 图标资源
+│   │   │   └── index.js         # lib 顶层 barrel 导出（轻量）
 │   │   └── routes/
 │   │       ├── +layout.js       # prerender = true
 │   │       ├── +layout.svelte   # 全局布局（主题初始化 + 右键策略 + ToastHost）
@@ -144,9 +152,9 @@ idb_desktop/
 {
   "id": "uuid-v4-string",
   "category": "SCHEMA | USER | TABLE | DATA | SQL",
-  "action": "LIST | CREATE | UPDATE | DELETE | EXECUTE",
+  "action": "LIST | CREATE | UPDATE | DELETE | EXECUTE | GET_DDL",
   "connection": {
-    "driver": "Mysql | Postgresql",
+    "driver": "Mysql | Postgres",
     "host": "127.0.0.1",
     "port": 3306,
     "user": "root",
@@ -156,6 +164,8 @@ idb_desktop/
   "payload": {}
 }
 ```
+
+> driver 字段约定使用 `Mysql`（首字母大写，不带 "sql" 后缀）和 `Postgres`（与 Go 侧 `dataclass` 对齐）。
 
 ### 5.2 响应体（Response Envelope）
 
@@ -190,8 +200,12 @@ idb_desktop/
 | USER | UPDATE | `{ user, schema, privileges, isGrant }` | `isGrant=true` 授权、`false` 回收 |
 | TABLE | LIST | `{}` | 列出 `connection.database` 内的表，返回 `[{name, type}]` |
 | TABLE | LIST | `{ tableName }` | **payload 含 tableName 时自动路由**为列元数据，返回 `[{name, type, size, nullable, isPrimaryKey, defaultValue}]` |
-| DATA | LIST | `{ tableName, page, pageSize }` | **page 从 1 开始**；LOB / 长文本字段引擎自动截断为 `[LOB Data]`；返回 `{ total, page, pageSize, rows: [...] }` |
-| DATA | LIST | `{ tableName, pageSize: 0 }` | **全量流式查询**：触发引擎流式多行响应（`stream:true`），每行含单条数据，末行 `end:true` |
+| TABLE | CREATE | `{ tableName, columns: ColumnDef[] }` | 新建表；`ColumnDef` 含 `name / type / size / nullable / isPrimaryKey / defaultValue` |
+| TABLE | UPDATE | `{ tableName, operation, column?, columnName? }` | **operation 字段** 二级路由：`ADD_COLUMN`（含 `column`）/ `MODIFY_COLUMN`（含 `column`，可改名 `newName`）/ `DROP_COLUMN`（含 `columnName`） |
+| TABLE | DELETE | `{ tableName }` | 删除整张表 |
+| TABLE | GET_DDL | `{ tableName }` | 取建表语句字符串 |
+| DATA | LIST | `{ tableName, page, pageSize, where?, orderBy? }` | **page 从 1 开始**；LOB / 长文本字段引擎自动截断为 `[LOB Data]`；返回 `{ total, page, pageSize, rows: [...] }`。`where` / `orderBy` 是 SQL 片段，由前端 `sqlValidate.js` 方言级校验后透传，引擎侧会再次校验 |
+| DATA | LIST | `{ tableName, page: 1, pageSize: 0, where?, orderBy? }` | **全量流式查询**：触发引擎流式多行响应（`stream:true`），每行含单条数据，末行 `end:true` |
 | DATA | CREATE | `{ tableName, values: { col: val, ... } }` | 单行插入；返回 `{ affectedRows }` |
 | DATA | UPDATE | `{ tableName, changes: {...}, where: {...} }` | 多列条件更新；返回 `{ affectedRows }` |
 | DATA | DELETE | `{ tableName, where: {...} }` | 条件删除；返回 `{ affectedRows }` |
@@ -234,17 +248,26 @@ type Engine struct {
     cmd    *exec.Cmd
     stdin  io.WriteCloser
     stdout *bufio.Scanner
+    ctx    context.Context           // 用于 Wails EventsEmit
 
-    writeMu sync.Mutex          // stdin 写入互斥（两条 JSON 不交错）
-    pendMu  sync.Mutex
-    pending map[string]chan string // id → 等待者 channel（容量 1）
-    done    chan struct{}        // 引擎退出信号
+    writeMu  sync.Mutex               // 仅在写入 stdin 期间持有
+    pendMu   sync.Mutex
+    pending  map[string]chan string   // id → 等待者 channel（容量 1）
+    done     chan struct{}            // reader 退出 / 引擎死掉时关闭
+    closeOnce sync.Once
+    closeErr error                    // 终止原因
 }
 ```
 
 **并发协议**：`Invoke(ctx, reqJSON)` 先从 JSON 中提取 `id`，注册一个 capacity-1 的 channel 到 `pending`，互斥写入 stdin，然后阻塞等待对应 channel 返回结果。独立 `readLoop` goroutine 持续读取 stdout，解析响应 `id`，将结果路由到正确的等待者。支持 `ctx` 取消和引擎死亡检测。
 
-`FetchDatabaseData(reqJSON string) string` 是暴露给前端的唯一引擎入口，内部调用 `engine.Invoke(context.Background(), reqJSON)`，异常时返回合成错误信封。
+**流式协议**：当响应 envelope 的 `stream: true` 时，`readLoop` 通过 `wruntime.EventsEmit` 把每一行以 `engine:stream:<id>` 事件推送到前端（末行 `end:true` 走 `engine:stream-end:<id>`），并写一行到 channel 唤醒 `Invoke` 让其返回确认信封。前端 `api/index.js` 的 `invokeStreaming` 同时订阅 `EventsOnce(end)` 和 `EventsOn(stream)` 两类事件，串接成行回调。`closeAll` 在引擎异常时通过 `engine:stream-end:<id>` 事件向所有挂起的流式等待者发送带错误的结束 envelope。`closeOnce` 保护 Shutdown 与 reader 并发触发 closeAll 的安全。
+
+**暴露入口**：
+- `FetchDatabaseData(reqJSON)` — 非流式 / 同步入口，调用 `Invoke(ctx, reqJSON)`，异常时返回合成错误 envelope。
+- `FetchDatabaseDataStreaming(reqJSON)` — 流式入口；首条响应若是 `stream: true`，立即返回 `{id, success:true, stream:true}` 确认信封；否则退化为普通响应直接返回。
+
+**管道读上限**：`bufio.Scanner` 缓冲上限 `engineMaxLine = 8 MiB`，单行超大响应（不分页的大字段等）必须由 §9.2 熔断机制兜底。
 
 **路径解析**：`resolveAppDir()` 优先使用 `os.Executable()` 推导的目录（生产），回退到 `os.Getwd()`（`wails dev`）。
 
@@ -252,11 +275,15 @@ type Engine struct {
 - `engine_windows.go`：`syscall.SysProcAttr{HideWindow: true, CreationFlags: CREATE_NO_WINDOW}` 隐藏控制台子窗口。
 - `engine_unix.go`：空实现。
 
+**优雅关闭**：`Shutdown` 先尝试 `writeMu.TryLock()` 走优雅路径（`CMD_EXIT\n` + 关闭 stdin）；若锁被占用直接 `Process.Kill()` 兜底，关闭的 stdin 会让阻塞中的 writer 立即返回。
+
 ### 6.2 内存与并发护栏
 
 - **JVM 上限锁死 256MB**：通过 `-Xmx256m` 启动参数施加，避免引擎抢占主进程内存预算。
-- **Wails Webview 目标**：物理常驻 ≤ 150MB（与 §8 大字段熔断协同保障）。
-- **管道读超时**：建议在 Go 侧使用带 deadline 的 reader 包装，防止子进程僵死阻塞 UI。
+- **JVM 初始堆 32MB + 串行 GC**：`-Xms32m -XX:+UseSerialGC`，桌面单人使用优先考虑内存占用而非吞吐。
+- **Wails Webview 目标**：物理常驻 ≤ 150MB（与 §9 大字段熔断协同保障）。
+- **stdout 单行缓冲上限 8 MiB**：`engineMaxLine`；超过会被 `bufio.ErrTooLong` 触发，readLoop 视为引擎异常并 `closeAll`。
+- **stderr 独立通道**：引擎 stderr 接到 `log.Printf("[engine.stderr] ...")`，绝不混入 stdout 协议流（实现见 `engine.go` 的 `stderrLogger`）。
 
 ---
 
@@ -279,8 +306,9 @@ type Engine struct {
 引擎主线程按行读取 stdin，解析 JSON → 路由到 `category/action` 处理器 → 序列化结果 → 单行写回 stdout。所有处理器必须满足：
 
 - 全部使用占位符（`?`）参数化绑定，**严禁字符串拼接 SQL**；
-- 大字段在序列化前必须按 §8.2 熔断；
+- 大字段在序列化前必须按 §9.2 熔断；
 - 处理器内部异常须捕获并填充到响应 envelope 的 `error` 字段，绝不让异常打穿到 stdout，否则会污染下一条消息。
+- WHERE / ORDER BY 片段由前端 `sqlValidate.js` 方言级预校验后透传（禁止关键字白名单 + 引号内豁免），引擎侧仍需二次校验。
 
 ---
 
@@ -357,6 +385,38 @@ export function err(text) { pushToast('error', text) }
 
 新增 Go 方法后会自动刷新。**不要手工编辑 `wailsjs/` 内任何文件**。
 
+### 8.6 DataGrid 双行 Header 布局
+
+[DataGrid.svelte](frontend/src/lib/components/DataGrid.svelte) 的 toolbar header 采用 `flex-col` 双行结构，中间用 `border-top: 1px solid var(--md-outline-variant)` 分割：
+
+- **第一行**：标题（schema · table）+ 右侧工具栏（刷新、只读 / + 插入）。
+- **第二行**：WHERE 条件（`flex-1` 自适应）+ ORDER BY（固定 `11rem`）并排显示。
+
+布局要点：
+- 整体 `gap-1 pt-1` 让两行之间有视觉留白。
+- 分割线颜色复用 `--md-outline-variant`，与 header 底部外框线、表格 thead 分隔线保持一致。
+- WHERE 输入使用 `flex-1` 占满剩余宽度，ORDER BY 固定宽度保证简短排序条件不被拉伸。
+- 两行均使用 `items-center`，输入框高度统一 `20px`（与 MonacoInput 单行基线对齐）。
+
+### 8.7 SQL 片段前端校验
+
+`sqlValidate.js`（在 `invoke` 前调用）对 WHERE / ORDER BY 片段做早判，提前拒绝危险片段，避免无意义的网络往返。校验逻辑按数据库方言分叉：
+
+- **FORBIDDEN_KEYWORDS**（通用）：`INSERT, UPDATE, DELETE, DROP, UNION, EXEC, EXECUTE, CREATE, ALTER, GRANT, REVOKE, TRUNCATE`，引号内的出现会被跳过。
+- **ORDER BY 额外约束**：仅允许列名、ASC/DESC、数字字面量和逗号分隔符，显式拒绝函数/子查询拼接。
+- 引擎侧也会做二次校验（Kotlin 层），双重防护确保安全。
+
+### 8.8 SQL 补全项配置
+
+`sqlCompletion.js` 按上下文分组提供 Monaco 补全项：
+
+- **表达式级**（WHERE / HAVING）：`AND, OR, NOT, NULL, IN, BETWEEN, LIKE, EXISTS, DISTINCT, TRUE, FALSE, CASE/WHEN/THEN/ELSE/END`
+- **子句级**（SELECT 结构）：`SELECT, FROM, WHERE, GROUP BY, ORDER BY, HAVING, LIMIT, OFFSET, JOIN, LEFT/RIGHT/INNER/OUTER JOIN, ON, AS, UNION, ASC, DESC`
+- **DML 级**：`INSERT INTO, VALUES, UPDATE, SET, DELETE FROM`
+- **通用函数**：`COUNT, SUM, AVG, MIN, MAX, NOW, CURRENT_DATE, CURRENT_TIMESTAMP, COALESCE, NULLIF, CAST, UPPER, LOWER, LENGTH, TRIM, SUBSTRING, CONCAT`
+- **MySQL 专属**：`RLIKE, REGEXP, SOUNDS LIKE, XOR, IGNORE, FORCE, USE INDEX, STRAIGHT_JOIN, DESCRIBE, EXPLAIN, SHOW, TRUNCATE, AUTO_INCREMENT, IF NOT EXISTS, REPLACE`
+- **PostgreSQL 专属**：`ILIKE, SIMILAR TO, ARRAY, JSONB_EXTRACT_PATH, REGEXP_REPLACE, REGEXP_MATCHES, STRING_AGG, GENERATE_SERIES, LATERAL, RETURNING, DO, EXCLUDE`
+
 ---
 
 ## 9. 安全与边界规范
@@ -372,6 +432,10 @@ export function err(text) { pushToast('error', text) }
 5. **进程边界纪律**
    - 所有 stdout 写入仅允许 envelope JSON；调试日志写 stderr。
    - Go 侧读取 stdout 必须按行；任何越界换行（如错误堆栈直出）都会破坏协议。
+6. **连接配置加密**
+   Windows 走 `crypto_windows.go` 的 DPAPI（`CryptProtectData` / `CryptUnprotectData`），密文仅在当前用户 / 当前机器下可解；非 Windows 走 `crypto_other.go` 的 AES-256-GCM，密钥从 `~/.config/idb/key` 派生，目录权限 0o700，密钥文件权限 0o600。`getPassword` 失败（key 缺失 / 密文损坏 / 跨用户拷贝）会带错误返回，让前端给出明确提示。
+7. **WHERE / ORDER BY 双重校验**
+   前端 `sqlValidate.js` 在请求发出前做禁止关键字扫描 + 引号内豁免 + ORDER BY 严格词法约束；引擎侧（Kotlin）做二次校验，确保即便前端校验被绕过也无法拼接危险 SQL。
 
 ---
 
@@ -393,6 +457,7 @@ make package-windows   # Windows NSIS 安装包
 make package-linux     # Linux tar.gz 分发包
 make package-all       # 全平台
 make jre-download      # 下载 Azul Zulu JRE 21
+make deps              # 依赖检查（go / node / npm / wails）
 make clean             # 清理构建产物
 
 # 仅前端开发（不通过 wails，调试样式时方便）
@@ -415,21 +480,22 @@ cd frontend && npm run lint
 
 | 模块 | 状态 |
 |---|---|
-| Wails 项目骨架 | ✅ 已搭建（main.go / app.go / wails.json） |
+| Wails 项目骨架 | ✅ 已搭建（main.go / app.go / app_dev.go / app_prod.go / wails.json） |
 | SvelteKit + Svelte 5 + Tailwind 4 | ✅ 完整 SPA，双路由（连接页 + 工作台） |
-| Go ↔ JVM 子进程管道 | ✅ 异步并发协议 + 流式响应（id 路由，事件推送） |
+| Go ↔ JVM 子进程管道 | ✅ 异步并发协议 + 流式响应（id 路由 + Wails 事件推送 + 8 MiB 缓冲上限） |
 | JSON 协议处理器 | ✅ 前端 API 层完整封装（invoke + invokeStreaming） |
-| 连接配置持久化 | ✅ 加密存储（Windows DPAPI / AES-256-GCM），CRUD 完整 |
+| 连接配置持久化 | ✅ 加密存储（Windows DPAPI / 非 Windows AES-256-GCM + 本地 key），CRUD 完整 |
 | 连接管理界面 | ✅ 连接列表 + 表单 + 密码保存 + 删除确认 |
 | 数据库树形浏览器 | ✅ 三级懒加载（Schema → Table → Column），右键菜单，筛选 |
-| 数据表格查看/编辑 | ✅ 分页（20/50/100/200/500） + 全量流式加载 + 行 CRUD |
-| SQL 控制台 | ✅ Monaco 编辑器 + 智能补全 + 多语句执行 + SELECT 流式 |
-| 表结构编辑 | ✅ Draft 模式列编辑器 + 新建表向导 + 字段改名 |
+| 数据表格查看/编辑 | ✅ 分页（20/50/100/200/500/全量） + 全量流式加载 + 行 CRUD + 列内筛选 + 搜索 + 双行 header（标题工具栏 / WHERE+ORDER BY） |
+| SQL 控制台 | ✅ Monaco 编辑器 + 智能补全（按 driver 区分） + 多语句执行 + SELECT 流式 + sql-formatter 格式化 |
+| 表结构编辑 | ✅ Draft 模式列编辑器（ADD / MODIFY / DROP COLUMN）+ 新建表向导 + 字段改名（newName）+ GET_DDL |
 | 用户与权限管理 | ✅ 用户列表 + GRANT/REVOKE 模态框 |
+| WHERE / ORDER BY 安全 | ✅ 前端 `sqlValidate.js` 方言级校验 + 引擎侧二次校验 |
 | MD3 Token / Tailwind theme | ✅ 完整 MD3 令牌注入 + 亮色/暗色/自动主题 |
 | 上下文菜单 / Toast 通知 | ✅ 右键菜单（dev 模式可用原生菜单） + Toast |
-| 只读系统库保护 | ✅ MySQL 系统 schema 写操作拦截 |
+| 只读系统库保护 | ✅ MySQL 系统 schema 写操作拦截 + 写关键字检测 |
 | NSIS 安装包 | ✅ Windows 安装包（含 engine 打包 + 快捷方式选项） |
 | Linux 分发包 | ✅ tar.gz + run.sh 启动器 |
-| Makefile 自动化 | ✅ 双平台构建 + Azul Zulu JRE 自动下载 |
+| Makefile 自动化 | ✅ 双平台构建 + Azul Zulu JRE 21 自动下载 + deps 依赖自检 |
 | 虚拟滚动 | ⏳ 未实现（当前标准 table 渲染） |

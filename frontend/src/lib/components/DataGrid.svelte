@@ -406,69 +406,76 @@
 
 <section class="flex h-full flex-col overflow-hidden">
 	<header
-		class="flex shrink-0 items-center gap-2 px-3 py-2"
+		class="flex shrink-0 flex-col gap-1 px-3 py-2"
 		style="background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant);"
 	>
-		<h2 class="shrink-0 text-sm font-medium">
-			<span style="color: var(--md-on-surface-variant);">{schemaName}</span>
-			<span style="color: var(--md-on-surface-variant);"> · </span>
-			<span class="font-mono" style="color: var(--md-on-surface);">{tableName}</span>
-			{#if pending}
-				<span class="ml-2 animate-pulse text-xs" style="color: var(--md-on-surface-variant);"
-					>…</span
-				>
-			{/if}
-		</h2>
-		<span class="shrink-0 text-xs font-mono" style="color: var(--md-on-surface-variant);">WHERE</span>
-		<div class="min-w-0 flex-1" style="height: 20px;">
-			<MonacoInput
-				value={whereClause}
-				onValueChange={(v) => (whereClause = v)}
-				onEnter={() => {
-					if (pageSize === 0) loadStreaming();
-					else load();
-				}}
-				getSuggestions={getWhereSuggestions}
-				placeholder="WHERE（如 status = 'active'）"
-			/>
-		</div>
-		<span class="shrink-0 text-xs font-mono" style="color: var(--md-on-surface-variant);">ORDER BY</span>
-		<div class="shrink-0" style="width: 11rem; height: 20px;">
-			<MonacoInput
-				value={orderByClause}
-				onValueChange={(v) => (orderByClause = v)}
-				onEnter={() => {
-					if (pageSize === 0) loadStreaming();
-					else load();
-				}}
-				getSuggestions={getOrderBySuggestions}
-				placeholder="ORDER BY（如 created_at DESC）"
-			/>
-		</div>
-		<div class="flex shrink-0 items-center gap-1.5">
-			<button
-				class="md-icon-btn"
-				title="刷新"
-				onclick={() => {
-					if (pageSize === 0) loadStreaming();
-					else load();
-				}}
-				disabled={pending || streaming}
-			>
-				↻
-			</button>
-			{#if readOnly}
-				<span class="md-chip" title="MySQL 系统库，只读">RO · 只读</span>
-			{:else}
+		<div class="flex items-center gap-2">
+			<h2 class="shrink-0 text-sm font-medium">
+				<span style="color: var(--md-on-surface-variant);">{schemaName}</span>
+				<span style="color: var(--md-on-surface-variant);"> · </span>
+				<span class="font-mono" style="color: var(--md-on-surface);">{tableName}</span>
+				{#if pending}
+					<span class="ml-2 animate-pulse text-xs" style="color: var(--md-on-surface-variant);"
+						>…</span
+					>
+				{/if}
+			</h2>
+			<div class="flex shrink-0 items-center gap-1.5 ml-auto">
 				<button
-					class="md-btn-filled"
-					style="padding: 0.125rem 0.5rem; font-size: 0.75rem;"
-					onclick={() => (inserting = true)}
-					disabled={columns.length === 0 && columnMeta.length === 0}
+					class="md-icon-btn"
+					title="刷新"
+					onclick={() => {
+						if (pageSize === 0) loadStreaming();
+						else load();
+					}}
+					disabled={pending || streaming}
 				>
-					+ 插入
+					↻
 				</button>
-			{/if}
+				{#if readOnly}
+					<span class="md-chip" title="MySQL 系统库，只读">RO · 只读</span>
+				{:else}
+					<button
+						class="md-btn-filled"
+						style="padding: 0.125rem 0.5rem; font-size: 0.75rem;"
+						onclick={() => (inserting = true)}
+						disabled={columns.length === 0 && columnMeta.length === 0}
+					>
+						+ 插入
+					</button>
+				{/if}
+			</div>
+		</div>
+		<div
+			class="flex items-center gap-2 pt-1"
+			style="border-top: 1px solid var(--md-outline-variant);"
+		>
+			<span class="shrink-0 text-xs font-mono" style="color: var(--md-on-surface-variant);">WHERE</span>
+			<div class="min-w-0 flex-1" style="height: 20px;">
+				<MonacoInput
+					value={whereClause}
+					onValueChange={(v) => (whereClause = v)}
+					onEnter={() => {
+						if (pageSize === 0) loadStreaming();
+						else load();
+					}}
+					getSuggestions={getWhereSuggestions}
+					placeholder="WHERE（如 status = 'active'）"
+				/>
+			</div>
+			<span class="shrink-0 text-xs font-mono" style="color: var(--md-on-surface-variant);">ORDER BY</span>
+			<div class="shrink-0" style="width: 11rem; height: 20px;">
+				<MonacoInput
+					value={orderByClause}
+					onValueChange={(v) => (orderByClause = v)}
+					onEnter={() => {
+						if (pageSize === 0) loadStreaming();
+						else load();
+					}}
+					getSuggestions={getOrderBySuggestions}
+					placeholder="ORDER BY（如 created_at DESC）"
+				/>
+			</div>
 		</div>
 	</header>
 
