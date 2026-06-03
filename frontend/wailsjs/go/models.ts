@@ -5,6 +5,7 @@ export namespace main {
 	    themeMode: string;
 	    lightThemeId: string;
 	    darkThemeId: string;
+	    locale: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -16,6 +17,7 @@ export namespace main {
 	        this.themeMode = source["themeMode"];
 	        this.lightThemeId = source["lightThemeId"];
 	        this.darkThemeId = source["darkThemeId"];
+	        this.locale = source["locale"];
 	    }
 	}
 	export class SaveConnectionInput {

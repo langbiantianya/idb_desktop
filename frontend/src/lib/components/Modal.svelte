@@ -1,4 +1,5 @@
 <script>
+	import { t } from '$lib/i18n';
 	/**
 	 * @typedef {Object} Props
 	 * @property {boolean} open
@@ -38,7 +39,7 @@
 					<button
 						class="md-icon-btn"
 						onclick={onClose}
-						aria-label="关闭"
+						aria-label={$t('common.close_label')}
 					>
 						✕
 					</button>

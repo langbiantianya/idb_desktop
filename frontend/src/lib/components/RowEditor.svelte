@@ -1,5 +1,6 @@
 <script>
 	import Modal from './Modal.svelte';
+	import { t } from '$lib/i18n';
 	import {
 		temporalKind,
 		hasTimeZone,
@@ -149,7 +150,7 @@
 							style="padding: 0 0.375rem; font-size: 0.625rem;"
 							onclick={() => setNull(c)}
 						>
-							设为 NULL
+							{$t('row.set_null')}
 						</button>
 					</div>
 					{#if drafts[c] === null}
@@ -159,7 +160,7 @@
 							style="border: 1px dashed var(--md-outline); border-radius: var(--md-radius-xs); color: var(--md-on-surface-variant); background: transparent;"
 							onclick={() => setText(c, '')}
 						>
-							NULL（点击编辑）
+							{$t('row.null_hint')}
 						</button>
 					{:else if kind === 'date'}
 						<input
@@ -190,7 +191,7 @@
 							type="text"
 							value={drafts[c]}
 							oninput={(e) => setText(c, e.currentTarget.value)}
-							placeholder={kind && tz ? '带时区时间需手动输入，如 2024-01-01 12:00:00+08:00' : ''}
+							placeholder={kind && tz ? $t('row.tz_hint') : ''}
 						/>
 					{/if}
 				</label>
@@ -199,10 +200,10 @@
 
 		<footer class="flex justify-end gap-2 pt-2">
 			<button class="md-btn-text" type="button" onclick={onCancel} disabled={pending}>
-				取消
+				{$t('common.cancel')}
 			</button>
 			<button class="md-btn-filled" type="submit" disabled={pending}>
-				{pending ? '提交中…' : editing ? '保存修改' : '插入'}
+				{pending ? $t('common.submitting') : editing ? $t('row.save_changes') : $t('common.insert')}
 			</button>
 		</footer>
 	</form>

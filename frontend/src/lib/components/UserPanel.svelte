@@ -2,6 +2,8 @@
 	import { listUsers, listSchemas, updateUserPrivileges } from '$lib/api';
 	import { asUserList, asStringList } from '$lib/api/normalize.js';
 	import { ok, err } from '$lib/stores/toasts.js';
+	import { t } from '$lib/i18n';
+	import { get } from 'svelte/store';
 	import Modal from './Modal.svelte';
 
 	/**
@@ -36,7 +38,7 @@
 		try {
 			const resp = await listUsers(baseConn);
 			if (!resp.success) {
-				err(resp.error ?? '加载用户失败');
+				err(resp.error ?? get(t)('user.toast.load_failed'));
 				users = [];
 				return;
 			}
@@ -68,11 +70,11 @@
 	async function submit() {
 		if (!editing) return;
 		if (!formSchema) {
-			err('请选择目标 schema');
+			err(get(t)('user.toast.select_schema'));
 			return;
 		}
 		if (formPrivileges.size === 0) {
-			err('请至少勾选一项权限');
+			err(get(t)('user.toast.select_priv'));
 			return;
 		}
 		formPending = true;
@@ -84,10 +86,10 @@
 				isGrant: formIsGrant
 			});
 			if (!resp.success) {
-				err(resp.error ?? '操作失败');
+				err(resp.error ?? get(t)('user.toast.failed'));
 				return;
 			}
-			ok(`${formIsGrant ? '已授予' : '已回收'} ${editing.user} 在 ${formSchema} 的权限`);
+			ok(get(t)(formIsGrant ? 'user.toast.granted' : 'user.toast.revoked', { user: editing.user, schema: formSchema }));
 			editing = null;
 		} finally {
 			formPending = false;
@@ -101,18 +103,18 @@
 		style="background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant);"
 	>
 		<h2 class="text-sm font-medium" style="color: var(--md-on-surface);">
-			用户与权限
+			{$t('user.title')}
 			<span class="ml-2 text-xs" style="color: var(--md-on-surface-variant);">{users.length}</span>
 			{#if pending}
 				<span class="ml-2 animate-pulse text-xs" style="color: var(--md-on-surface-variant);">…</span>
 			{/if}
 		</h2>
-		<button class="md-icon-btn" title="刷新" onclick={refresh} disabled={pending}>↻</button>
+		<button class="md-icon-btn" title={$t('common.refresh')} onclick={refresh} disabled={pending}>↻</button>
 	</header>
 
 	<div class="flex-1 overflow-auto px-3 pb-3">
 		{#if users.length === 0 && !pending}
-			<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">暂无用户</p>
+			<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">{$t('user.no_users')}</p>
 		{:else}
 			<ul class="grid grid-cols-2 gap-2">
 				{#each users as u, i (`${u.user}@${u.host ?? '*'}-${i}`)}
@@ -123,7 +125,7 @@
 						<span class="truncate font-mono" style="color: var(--md-on-surface);">
 							{u.user}{u.host ? `@${u.host}` : ''}
 						</span>
-						<button class="md-btn-text" onclick={() => openEditor(u)}>授权 / 回收</button>
+						<button class="md-btn-text" onclick={() => openEditor(u)}>{$t('user.grant_revoke')}</button>
 					</li>
 				{/each}
 			</ul>
@@ -133,16 +135,16 @@
 
 <Modal
 	open={editing !== null}
-	title={editing ? `权限管理 · ${editing.user}${editing.host ? '@' + editing.host : ''}` : ''}
+	title={editing ? `${get(t)('user.edit_title', { user: editing.user + (editing.host ? '@' + editing.host : '') })}` : ''}
 	size="md"
 	onClose={() => (editing = null)}
 >
 	<div class="flex flex-col gap-4">
 		<label class="flex flex-col gap-1 text-sm">
-			<span style="color: var(--md-on-surface-variant);">目标 schema</span>
+			<span style="color: var(--md-on-surface-variant);">{$t('user.target_schema')}</span>
 			<select class="md-input" bind:value={formSchema}>
 				{#if schemaOptions.length === 0}
-					<option value="">（暂无 schema 选项）</option>
+					<option value="">{$t('user.no_schema')}</option>
 				{/if}
 				{#each schemaOptions as s (s)}
 					<option value={s}>{s}</option>
@@ -158,7 +160,7 @@
 				style="border: 1px solid {formIsGrant ? 'transparent' : 'var(--md-outline-variant)'}; border-radius: var(--md-radius-sm);"
 				onclick={() => (formIsGrant = true)}
 			>
-				授予 GRANT
+				{$t('user.grant')}
 			</button>
 			<button
 				class="flex-1 px-3 py-1.5"
@@ -167,12 +169,12 @@
 				style="border: 1px solid {!formIsGrant ? 'transparent' : 'var(--md-outline-variant)'}; border-radius: var(--md-radius-sm);"
 				onclick={() => (formIsGrant = false)}
 			>
-				回收 REVOKE
+				{$t('user.revoke')}
 			</button>
 		</div>
 
 		<div class="flex flex-col gap-1 text-sm">
-			<span style="color: var(--md-on-surface-variant);">权限</span>
+			<span style="color: var(--md-on-surface-variant);">{$t('user.privileges')}</span>
 			<div class="grid grid-cols-4 gap-2">
 				{#each PRIVILEGES as p (p)}
 					<label
@@ -195,14 +197,14 @@
 
 	{#snippet footer()}
 		<button class="md-btn-text" onclick={() => (editing = null)} disabled={formPending}>
-			取消
+			{$t('common.cancel')}
 		</button>
 		<button
 			class={formIsGrant ? 'md-btn-filled' : 'md-btn-danger'}
 			onclick={submit}
 			disabled={formPending || formPrivileges.size === 0 || !formSchema}
 		>
-			{formPending ? '提交中…' : formIsGrant ? '授予' : '回收'}
+			{formPending ? $t('common.submitting') : formIsGrant ? $t('user.grant') : $t('user.revoke')}
 		</button>
 	{/snippet}
 </Modal>

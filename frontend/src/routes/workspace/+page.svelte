@@ -8,6 +8,8 @@
 	import TablePanel from '$lib/components/TablePanel.svelte';
 	import TableEditor from '$lib/components/TableEditor.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import { t } from '$lib/i18n';
+	import { get } from 'svelte/store';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
@@ -95,7 +97,7 @@
 		const id = 'users';
 		const exists = tabs.find((t) => t.id === id);
 		if (!exists) {
-			tabs = [...tabs, { id, kind: 'users', title: '用户与权限' }];
+			tabs = [...tabs, { id, kind: 'users', title: get(t)('workspace.users_tab') }];
 		}
 		activeTabId = id;
 	}
@@ -197,19 +199,19 @@
 		<div class="flex-1"></div>
 
 		<button class="md-btn-text" onclick={openSqlTab} disabled={!selectedSchema}>
-			SQL 控制台
+			{$t('workspace.sql_console')}
 		</button>
-		<button class="md-btn-text" onclick={openUsersTab}>用户</button>
+		<button class="md-btn-text" onclick={openUsersTab}>{$t('workspace.users')}</button>
 		<div class="flex items-center gap-1">
 			<ThemeToggle />
-			<button class="md-icon-btn" onclick={() => goto('/settings')} title="设置">
+			<button class="md-icon-btn" onclick={() => goto('/settings')} title={$t('workspace.settings')}>
 				<svg width="18" height="18" viewBox="0 0 20 20" fill="none">
 					<path d="M8.325 2.317a1.417 1.417 0 013.35 0 1.417 1.417 0 002.142.866 1.417 1.417 0 012.368 2.368 1.417 1.417 0 00.866 2.142 1.417 1.417 0 010 3.35 1.417 1.417 0 00-.866 2.142 1.417 1.417 0 01-2.368 2.368 1.417 1.417 0 00-2.142.866 1.417 1.417 0 01-3.35 0 1.417 1.417 0 00-2.142-.866 1.417 1.417 0 01-2.368-2.368 1.417 1.417 0 00-.866-2.142 1.417 1.417 0 010-3.35 1.417 1.417 0 00.866-2.142 1.417 1.417 0 012.368-2.368 1.417 1.417 0 002.142-.866z" stroke="currentColor" stroke-width="1.3"/>
 					<circle cx="10" cy="10" r="2.5" stroke="currentColor" stroke-width="1.3"/>
 				</svg>
 			</button>
 		</div>
-		<button class="md-btn-outlined" onclick={disconnect}>断开</button>
+		<button class="md-btn-outlined" onclick={disconnect}>{$t('workspace.disconnect')}</button>
 	</header>
 
 	<div class="flex flex-1 overflow-hidden">
@@ -235,45 +237,45 @@
 			>
 				{#if tabs.length === 0}
 					<span class="px-3 py-2 text-xs" style="color: var(--md-on-surface-variant);">
-						从左侧选择表，或打开 SQL / 用户
+						{$t('workspace.select_table_hint')}
 					</span>
 				{:else}
-					{#each tabs as t (t.id)}
+					{#each tabs as tab (tab.id)}
 						<div
 							role="tab"
 							tabindex="0"
-							aria-selected={activeTabId === t.id}
+							aria-selected={activeTabId === tab.id}
 							class="group flex shrink-0 cursor-pointer items-center gap-2 px-3 py-1.5 text-xs transition"
-							style:background={activeTabId === t.id ? 'var(--md-surface)' : 'transparent'}
-							style:color={activeTabId === t.id ? 'var(--md-on-surface)' : 'var(--md-on-surface-variant)'}
-							style="border-top: 2px solid {activeTabId === t.id ? 'var(--md-primary)' : 'transparent'}; border-radius: var(--md-radius-xs) var(--md-radius-xs) 0 0;"
-							onclick={() => (activeTabId = t.id)}
+							style:background={activeTabId === tab.id ? 'var(--md-surface)' : 'transparent'}
+							style:color={activeTabId === tab.id ? 'var(--md-on-surface)' : 'var(--md-on-surface-variant)'}
+							style="border-top: 2px solid {activeTabId === tab.id ? 'var(--md-primary)' : 'transparent'}; border-radius: var(--md-radius-xs) var(--md-radius-xs) 0 0;"
+							onclick={() => (activeTabId = tab.id)}
 							onmousedown={(e) => {
 								if (e.button === 1) e.preventDefault();
 							}}
 							onauxclick={(e) => {
-								if (e.button === 1) closeTab(t.id, e);
+								if (e.button === 1) closeTab(tab.id, e);
 							}}
 							onkeydown={(e) => {
 								if (e.key === 'Enter' || e.key === ' ') {
 									e.preventDefault();
-									activeTabId = t.id;
+									activeTabId = tab.id;
 								}
 							}}
 						>
-							{#if t.kind === 'data'}
+							{#if tab.kind === 'data'}
 								<span style="color: var(--md-tertiary-container); filter: brightness(0.7);">▦</span>
-							{:else if t.kind === 'sql'}
+							{:else if tab.kind === 'sql'}
 								<span style="color: var(--md-primary);">⌘</span>
 							{:else}
 								<span style="color: var(--md-secondary);">◐</span>
 							{/if}
-							<span class="font-mono">{t.title}</span>
+							<span class="font-mono">{tab.title}</span>
 							<button
 								type="button"
 								class="opacity-50 hover:opacity-100"
-								aria-label="关闭"
-								onclick={(e) => closeTab(t.id, e)}
+								aria-label={$t('common.close_label')}
+								onclick={(e) => closeTab(tab.id, e)}
 							>
 								✕
 							</button>
@@ -290,27 +292,27 @@
 				{#if !activeTab}
 					<div class="flex flex-1 items-center justify-center">
 						<div class="text-center text-sm" style="color: var(--md-on-surface-variant);">
-							<p class="mb-2 text-base">无打开的标签</p>
-							<p>点击左侧表节点打开数据视图，或在顶部打开 SQL 控制台。</p>
+							<p class="mb-2 text-base">{$t('workspace.no_tabs')}</p>
+							<p>{$t('workspace.no_tabs_hint')}</p>
 						</div>
 					</div>
 				{/if}
-				{#each tabs as t (t.id)}
+				{#each tabs as tab (tab.id)}
 					<div
 						class="flex flex-1 flex-col overflow-hidden"
-						style:display={activeTabId === t.id ? 'flex' : 'none'}
+						style:display={activeTabId === tab.id ? 'flex' : 'none'}
 					>
-						{#if t.kind === 'data'}
-							{@const sc = schemaConnFor(t.schema)}
+						{#if tab.kind === 'data'}
+							{@const sc = schemaConnFor(tab.schema)}
 							{#if sc}
-								<DataGrid schemaConn={sc} schemaName={t.schema} tableName={t.table} reloadKey={reloadKeyFor(t.schema, t.table)} />
+								<DataGrid schemaConn={sc} schemaName={tab.schema} tableName={tab.table} reloadKey={reloadKeyFor(tab.schema, tab.table)} />
 							{/if}
-						{:else if t.kind === 'sql'}
-							{@const sc = schemaConnFor(t.schema)}
+						{:else if tab.kind === 'sql'}
+							{@const sc = schemaConnFor(tab.schema)}
 							{#if sc}
 								<SqlConsole schemaConn={sc} />
 							{/if}
-						{:else if t.kind === 'users'}
+						{:else if tab.kind === 'users'}
 							<UserPanel {baseConn} />
 						{/if}
 					</div>

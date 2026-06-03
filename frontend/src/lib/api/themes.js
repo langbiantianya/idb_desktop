@@ -20,6 +20,7 @@ import {
  * @property {'light' | 'dark' | 'auto'} themeMode
  * @property {string} lightThemeId - 空串 = 内置 MD3
  * @property {string} darkThemeId  - 空串 = 内置 MD3
+ * @property {string} locale - 'zh-CN' | 'zh-TW' | 'en' | 'ja' | 'ru'
  */
 
 /** @returns {Promise<ThemeInfo[]>} */

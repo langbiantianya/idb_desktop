@@ -1,6 +1,8 @@
 <script>
 	import { createTable } from '$lib/api';
 	import { ok, err } from '$lib/stores/toasts.js';
+	import { t } from '$lib/i18n';
+	import { get } from 'svelte/store';
 	import Modal from './Modal.svelte';
 
 	/**
@@ -70,22 +72,22 @@
 		if (!schemaConn) return;
 		const name = tableName.trim();
 		if (!name) {
-			err('请填写表名');
+			err(get(t)('table.toast.fill_name'));
 			return;
 		}
 		if (columns.length === 0) {
-			err('至少需要一个列');
+			err(get(t)('table.toast.need_column'));
 			return;
 		}
 		const cleaned = /** @type {ColumnDef[]} */ ([]);
 		for (const c of columns) {
 			const cn = c.name.trim();
 			if (!cn) {
-				err('列名不能为空');
+				err(get(t)('table.toast.empty_col_name'));
 				return;
 			}
 			if (!c.type.trim()) {
-				err(`列 ${cn} 的类型不能为空`);
+				err(get(t)('table.toast.empty_col_type', { name: cn }));
 				return;
 			}
 			/** @type {ColumnDef} */
@@ -100,10 +102,10 @@
 		try {
 			const resp = await createTable(schemaConn, name, cleaned);
 			if (!resp.success) {
-				err(resp.error ?? '创建表失败');
+				err(resp.error ?? get(t)('table.toast.create_failed'));
 				return;
 			}
-			ok(`已创建 ${schemaName}.${name}`);
+			ok(get(t)('table.toast.created', { schema: schemaName, name }));
 			onCreated?.(name);
 			onClose();
 		} finally {
@@ -112,22 +114,22 @@
 	}
 </script>
 
-<Modal {open} title={`新建表 · ${schemaName}`} size="lg" {onClose}>
+<Modal {open} title={$t('table.new_title', { schema: schemaName })} size="lg" {onClose}>
 	<div class="flex flex-col gap-4">
 		<label class="flex flex-col gap-1 text-sm">
-			<span style="color: var(--md-on-surface-variant);">表名</span>
+			<span style="color: var(--md-on-surface-variant);">{$t('table.table_name')}</span>
 			<input
 				class="md-input font-mono"
 				type="text"
 				bind:value={tableName}
-				placeholder="例如 products"
+				placeholder={$t('table.table_placeholder')}
 			/>
 		</label>
 
 		<div class="flex flex-col gap-2">
 			<div class="flex items-center justify-between">
-				<span class="text-sm" style="color: var(--md-on-surface-variant);">列定义</span>
-				<button class="md-btn-text" onclick={addColumn}>+ 添加列</button>
+				<span class="text-sm" style="color: var(--md-on-surface-variant);">{$t('table.columns')}</span>
+				<button class="md-btn-text" onclick={addColumn}>{$t('table.add_column')}</button>
 			</div>
 
 			<div
@@ -140,12 +142,12 @@
 						style="background: var(--md-surface-container); color: var(--md-on-surface-variant);"
 					>
 						<tr>
-							<th class="px-2 py-1.5 font-medium">列名</th>
-							<th class="px-2 py-1.5 font-medium">类型</th>
-							<th class="px-2 py-1.5 font-medium" style="width: 5rem;">长度</th>
-							<th class="px-2 py-1.5 font-medium" style="width: 4rem;">可空</th>
-							<th class="px-2 py-1.5 font-medium" style="width: 3rem;">PK</th>
-							<th class="px-2 py-1.5 font-medium">默认值</th>
+							<th class="px-2 py-1.5 font-medium">{$t('table.col_name')}</th>
+							<th class="px-2 py-1.5 font-medium">{$t('table.col_type')}</th>
+							<th class="px-2 py-1.5 font-medium" style="width: 5rem;">{$t('table.col_size')}</th>
+							<th class="px-2 py-1.5 font-medium" style="width: 4rem;">{$t('table.col_nullable')}</th>
+							<th class="px-2 py-1.5 font-medium" style="width: 3rem;">{$t('common.pk')}</th>
+							<th class="px-2 py-1.5 font-medium">{$t('table.col_default')}</th>
 							<th class="px-2 py-1.5 font-medium" style="width: 6rem;"></th>
 						</tr>
 					</thead>
@@ -220,7 +222,7 @@
 											type="button"
 											class="md-icon-btn"
 											style="width: 1.5rem; height: 1.5rem; font-size: 0.75rem;"
-											title="上移"
+											title={$t('table.move_up')}
 											onclick={() => moveUp(i)}
 											disabled={i === 0}
 										>
@@ -230,7 +232,7 @@
 											type="button"
 											class="md-icon-btn"
 											style="width: 1.5rem; height: 1.5rem; font-size: 0.75rem;"
-											title="下移"
+											title={$t('table.move_down')}
 											onclick={() => moveDown(i)}
 											disabled={i === columns.length - 1}
 										>
@@ -240,7 +242,7 @@
 											type="button"
 											class="md-icon-btn"
 											style="width: 1.5rem; height: 1.5rem; font-size: 0.75rem;"
-											title="删除"
+											title={$t('common.delete')}
 											onclick={() => removeColumn(i)}
 										>
 											<span style="color: var(--md-error);">✕</span>
@@ -262,13 +264,13 @@
 	</div>
 
 	{#snippet footer()}
-		<button class="md-btn-text" onclick={onClose} disabled={pending}>取消</button>
+		<button class="md-btn-text" onclick={onClose} disabled={pending}>{$t('common.cancel')}</button>
 		<button
 			class="md-btn-filled"
 			onclick={submit}
 			disabled={pending || !tableName.trim() || columns.length === 0}
 		>
-			{pending ? '创建中…' : '创建'}
+			{pending ? $t('common.creating') : $t('common.create')}
 		</button>
 	{/snippet}
 </Modal>

@@ -1,11 +1,12 @@
 <script>
 	import { themeMode, setTheme } from '$lib/stores/themeStore.js';
+	import { t } from '$lib/i18n';
 
-	const options = [
-		{ value: 'light', label: '☀', title: '浅色' },
-		{ value: 'auto', label: '⌬', title: '跟随系统' },
-		{ value: 'dark', label: '☾', title: '深色' }
-	];
+	const options = $derived([
+		{ value: 'light', label: '☀', title: $t('theme.light') },
+		{ value: 'auto', label: '⌬', title: $t('theme.auto') },
+		{ value: 'dark', label: '☾', title: $t('theme.dark') }
+	]);
 </script>
 
 <div

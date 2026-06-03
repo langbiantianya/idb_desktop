@@ -4,6 +4,8 @@
 	import { ok, err } from '$lib/stores/toasts.js';
 	import { isReadOnlySchema } from '$lib/readonly.js';
 	import { untrack } from 'svelte';
+	import { t } from '$lib/i18n';
+	import { get } from 'svelte/store';
 	import Modal from './Modal.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import ContextMenu from './ContextMenu.svelte';
@@ -123,7 +125,7 @@
 		try {
 			const resp = await listSchemas(baseConn);
 			if (!resp.success) {
-				err(resp.error ?? '加载 schema 失败');
+				err(resp.error ?? get(t)('sidebar.toast.schema_failed'));
 				schemas = [];
 				return;
 			}
@@ -138,7 +140,7 @@
 		try {
 			const resp = await listTables({ ...baseConn, database: schema });
 			if (!resp.success) {
-				err(resp.error ?? `加载 ${schema} 表失败`);
+				err(resp.error ?? get(t)('sidebar.toast.tables_failed', { schema }));
 				tablesBySchema = { ...tablesBySchema, [schema]: [] };
 				return;
 			}
@@ -176,7 +178,7 @@
 		try {
 			const resp = await listColumns({ ...baseConn, database: schema }, table);
 			if (!resp.success) {
-				err(resp.error ?? `加载 ${schema}.${table} 列失败`);
+				err(resp.error ?? get(t)('sidebar.toast.columns_failed', { schema, table }));
 				columnsByTable = { ...columnsByTable, [key]: [] };
 				return;
 			}
@@ -201,10 +203,10 @@
 		try {
 			const resp = await createSchema(baseConn, name);
 			if (!resp.success) {
-				err(resp.error ?? '创建失败');
+				err(resp.error ?? get(t)('sidebar.toast.create_failed'));
 				return;
 			}
-			ok(`已创建 ${name}`);
+			ok(get(t)('sidebar.toast.created', { name }));
 			creating = false;
 			newName = '';
 			await refreshSchemas();
@@ -217,7 +219,7 @@
 		const name = confirming;
 		if (!name) return;
 		if (isReadOnlySchema(baseConn, name)) {
-			err(`${name} 是 MySQL 系统库，禁止删除`);
+			err(get(t)('sidebar.toast.mysql_readonly', { name }));
 			confirming = null;
 			return;
 		}
@@ -225,10 +227,10 @@
 		try {
 			const resp = await deleteSchema(baseConn, name);
 			if (!resp.success) {
-				err(resp.error ?? '删除失败');
+				err(resp.error ?? get(t)('sidebar.toast.delete_failed'));
 				return;
 			}
-			ok(`已删除 ${name}`);
+			ok(get(t)('sidebar.toast.deleted', { name }));
 			confirming = null;
 			if (selectedSchema === name) onSelectSchema('');
 			delete tablesBySchema[name];
@@ -245,7 +247,7 @@
 		if (!confirmingTable) return;
 		const { schema, table } = confirmingTable;
 		if (isReadOnlySchema(baseConn, schema)) {
-			err(`${schema} 是 MySQL 系统库，禁止删除表`);
+			err(get(t)('sidebar.toast.mysql_table_readonly', { schema }));
 			confirmingTable = null;
 			return;
 		}
@@ -253,10 +255,10 @@
 		try {
 			const resp = await deleteTable({ ...baseConn, database: schema }, table);
 			if (!resp.success) {
-				err(resp.error ?? '删除表失败');
+				err(resp.error ?? get(t)('sidebar.toast.delete_table_failed'));
 				return;
 			}
-			ok(`已删除 ${schema}.${table}`);
+			ok(get(t)('sidebar.toast.table_deleted', { schema, table }));
 			confirmingTable = null;
 			onTableDeleted?.(schema, table);
 			await loadTables(schema);
@@ -351,9 +353,9 @@
 				document.execCommand('copy');
 				document.body.removeChild(ta);
 			}
-			ok(`已复制：${text}`);
+			ok(get(t)('sidebar.toast.copied', { text }));
 		} catch (e) {
-			err(e instanceof Error ? e.message : '复制失败');
+			err(e instanceof Error ? e.message : get(t)('common.copy_failed'));
 		}
 	}
 
@@ -374,12 +376,12 @@
 			const resp = await getTableDdl(conn, table);
 			if (resp.success && resp.data) {
 				await navigator.clipboard.writeText(String(resp.data));
-				ok('建表语句已复制');
+				ok(get(t)('sidebar.toast.ddl_copied'));
 			} else {
-				err(resp.error ?? '获取建表语句失败');
+				err(resp.error ?? get(t)('sidebar.toast.ddl_failed'));
 			}
 		} catch (e) {
-			err(e instanceof Error ? e.message : '获取建表语句失败');
+			err(e instanceof Error ? e.message : get(t)('sidebar.toast.ddl_failed'));
 		}
 	}
 
@@ -415,35 +417,35 @@
 		if (menu.kind === 'schema') {
 			const ro = isReadOnlySchema(baseConn, menu.schema);
 			const items = [
-				{ label: '刷新', icon: '↻', onClick: () => menuRefreshSchema(menu.schema) }
+				{ label: $t('sidebar.refresh'), icon: '↻', onClick: () => menuRefreshSchema(menu.schema) }
 			];
-			if (!ro) items.push({ label: '新建表', icon: '＋', onClick: () => menuCreateTable(menu.schema) });
-			items.push({ label: '复制引用', icon: '⧉', onClick: () => menuCopySchemaRef(menu.schema) });
+			if (!ro) items.push({ label: $t('sidebar.new_table'), icon: '＋', onClick: () => menuCreateTable(menu.schema) });
+			items.push({ label: $t('sidebar.copy_ref'), icon: '⧉', onClick: () => menuCopySchemaRef(menu.schema) });
 			if (!ro) {
 				items.push(null);
-				items.push({ label: '删除 schema', icon: '✕', danger: true, onClick: () => menuDeleteSchema(menu.schema) });
+				items.push({ label: $t('sidebar.delete_schema'), icon: '✕', danger: true, onClick: () => menuDeleteSchema(menu.schema) });
 			}
 			return items;
 		}
 		if (menu.kind === 'table') {
 			const ro = isReadOnlySchema(baseConn, menu.schema);
 			const items = [
-				{ label: '打开数据', icon: '▦', onClick: () => menuOpenTable(menu.schema, menu.table) },
-				{ label: '修改表结构', icon: '⊞', onClick: () => menuInspectTable(menu.schema, menu.table) },
-				{ label: '刷新表列表', icon: '↻', onClick: () => menuRefreshSchema(menu.schema) },
-				{ label: '复制引用', icon: '⧉', onClick: () => menuCopyTableRef(menu.schema, menu.table) },
-				{ label: '复制建表语句', icon: '⊕', onClick: () => menuCopyDdl(menu.schema, menu.table) }
+				{ label: $t('sidebar.open_data'), icon: '▦', onClick: () => menuOpenTable(menu.schema, menu.table) },
+				{ label: $t('sidebar.modify_table'), icon: '⊞', onClick: () => menuInspectTable(menu.schema, menu.table) },
+				{ label: $t('sidebar.refresh_tables'), icon: '↻', onClick: () => menuRefreshSchema(menu.schema) },
+				{ label: $t('sidebar.copy_ref'), icon: '⧉', onClick: () => menuCopyTableRef(menu.schema, menu.table) },
+				{ label: $t('sidebar.copy_ddl'), icon: '⊕', onClick: () => menuCopyDdl(menu.schema, menu.table) }
 			];
 			if (!ro) {
 				items.push(null);
-				items.push({ label: '删除表', icon: '✕', danger: true, onClick: () => menuDeleteTable(menu.schema, menu.table) });
+				items.push({ label: $t('sidebar.delete_table'), icon: '✕', danger: true, onClick: () => menuDeleteTable(menu.schema, menu.table) });
 			}
 			return items;
 		}
 		// column
 		return [
-			{ label: '复制列名', icon: '⧉', onClick: () => menuCopyColumnName(menu.column) },
-			{ label: '复制限定引用', icon: '⧉', onClick: () => menuCopyColumnRef(menu.schema, menu.table, menu.column) }
+			{ label: $t('sidebar.copy_column'), icon: '⧉', onClick: () => menuCopyColumnName(menu.column) },
+			{ label: $t('sidebar.copy_qualified'), icon: '⧉', onClick: () => menuCopyColumnRef(menu.schema, menu.table, menu.column) }
 		];
 	});
 </script>
@@ -462,8 +464,8 @@
 			<button
 				type="button"
 				class="md-icon-btn"
-				title="展开侧栏"
-				aria-label="展开侧栏"
+				title={$t('sidebar.expand')}
+				aria-label={$t('sidebar.expand')}
 				onclick={toggleCollapsed}
 			>
 				»
@@ -480,8 +482,8 @@
 				<button
 					type="button"
 					class="md-icon-btn"
-					title="折叠侧栏"
-					aria-label="折叠侧栏"
+					title={$t('sidebar.collapse')}
+					aria-label={$t('sidebar.collapse')}
 					onclick={toggleCollapsed}
 				>
 					«
@@ -495,7 +497,7 @@
 				<button
 					type="button"
 					class="md-icon-btn"
-					title="刷新"
+					title={$t('sidebar.refresh')}
 					onclick={refreshSchemas}
 					disabled={pending}
 				>
@@ -504,7 +506,7 @@
 				<button
 					type="button"
 					class="md-icon-btn"
-					title="新建 schema"
+					title={$t('sidebar.new_schema')}
 					onclick={() => {
 						newName = '';
 						creating = true;
@@ -520,7 +522,7 @@
 		<input
 			type="text"
 			class="md-input w-full text-xs"
-			placeholder="过滤 schema / 表"
+			placeholder={$t('sidebar.filter_placeholder')}
 			bind:value={filter}
 		/>
 	</div>
@@ -540,7 +542,7 @@
 	<div class="flex-1 overflow-auto px-1 pb-3">
 		{#if filteredSchemas.length === 0 && !pending}
 			<p class="px-3 py-4 text-center text-xs" style="color: var(--md-on-surface-variant);">
-				{filter ? '无匹配' : '无可见 schema'}
+				{filter ? $t('sidebar.no_match') : $t('sidebar.no_visible_schema')}
 			</p>
 		{:else}
 			<ul class="flex flex-col gap-px">
@@ -607,13 +609,13 @@
 							<span class="text-xs" style="color: var(--md-primary);">DB</span>
 							<span class="flex-1 truncate font-mono text-xs">{s}</span>
 							{#if isReadOnlySchema(baseConn, s)}
-								<span class="md-chip" title="MySQL 系统库，只读">RO</span>
+								<span class="md-chip" title={$t('sidebar.ro_readonly')}>RO</span>
 							{:else}
 								<button
 									type="button"
 									class="md-icon-btn opacity-0 group-hover:opacity-100"
 									style="width: 1.25rem; height: 1.25rem;"
-									title="新建表"
+									title={$t('sidebar.new_table')}
 									onclick={(e) => {
 										e.stopPropagation();
 										onCreateTable?.(s);
@@ -625,7 +627,7 @@
 									type="button"
 									class="md-icon-btn opacity-0 group-hover:opacity-100"
 									style="width: 1.25rem; height: 1.25rem;"
-									title="删除"
+									title={$t('common.delete')}
 									onclick={(e) => {
 										e.stopPropagation();
 										confirming = s;
@@ -641,55 +643,55 @@
 							<ul class="ml-6 flex flex-col gap-px border-l" style="border-color: var(--md-outline-variant);">
 								{#if loading[s]}
 									<li class="px-3 py-1 text-xs" style="color: var(--md-on-surface-variant);">
-										加载中…
+										{$t('common.loading')}
 									</li>
 								{:else if tablesIn(s).length === 0}
 									<li class="px-3 py-1 text-xs" style="color: var(--md-on-surface-variant);">
-										{filter && tablesBySchema[s]?.length ? '无匹配' : '空 schema'}
+										{filter && tablesBySchema[s]?.length ? $t('sidebar.no_match') : $t('sidebar.empty_schema')}
 									</li>
 								{:else}
-									{#each tablesIn(s) as t (t.name)}
-										{@const tk = `${s}.${t.name}`}
+									{#each tablesIn(s) as tbl (tbl.name)}
+										{@const tk = `${s}.${tbl.name}`}
 										<li>
 											<div
 												role="button"
 												tabindex="0"
 												class="group/row flex w-full cursor-pointer items-center gap-1 rounded-md py-1 pr-1 pl-1 text-left text-xs transition"
-												style:background={selectedSchema === s && selectedTable === t.name
+												style:background={selectedSchema === s && selectedTable === tbl.name
 													? 'var(--md-primary-container)'
 													: 'transparent'}
-												style:color={selectedSchema === s && selectedTable === t.name
+												style:color={selectedSchema === s && selectedTable === tbl.name
 													? 'var(--md-on-primary-container)'
 													: 'var(--md-on-surface)'}
 												onmouseenter={(e) =>
-													!(selectedSchema === s && selectedTable === t.name) &&
+													!(selectedSchema === s && selectedTable === tbl.name) &&
 													(e.currentTarget.style.background =
 														'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
 												onmouseleave={(e) =>
-													!(selectedSchema === s && selectedTable === t.name) &&
+													!(selectedSchema === s && selectedTable === tbl.name) &&
 													(e.currentTarget.style.background = 'transparent')}
-												onclick={() => onSelectTable(s, t.name)}
-												ondblclick={() => onSelectTable(s, t.name)}
+												onclick={() => onSelectTable(s, tbl.name)}
+												ondblclick={() => onSelectTable(s, tbl.name)}
 												onkeydown={(e) => {
 													if (e.key === 'Enter' || e.key === ' ') {
 														e.preventDefault();
-														onSelectTable(s, t.name);
+														onSelectTable(s, tbl.name);
 													}
 												}}
-												oncontextmenu={(e) => openTableMenu(e, s, t.name)}
+												oncontextmenu={(e) => openTableMenu(e, s, tbl.name)}
 											>
 												<span
 													class="inline-block w-3 text-center text-[10px] transition-transform"
 													style:transform={tableExpanded[tk] ? 'rotate(90deg)' : 'rotate(0deg)'}
 													onclick={(e) => {
 														e.stopPropagation();
-														toggleTable(s, t.name);
+														toggleTable(s, tbl.name);
 													}}
 													onkeydown={(e) => {
 														if (e.key === 'Enter' || e.key === ' ') {
 															e.preventDefault();
 															e.stopPropagation();
-															toggleTable(s, t.name);
+															toggleTable(s, tbl.name);
 														}
 													}}
 													role="button"
@@ -700,18 +702,18 @@
 												<span class="text-[10px]" style="color: var(--md-tertiary-container); filter: brightness(0.7);">
 													▦
 												</span>
-												<span class="flex-1 truncate font-mono">{t.name}</span>
-												{#if t.type !== 'TABLE'}
-													<span class="md-chip">{t.type}</span>
+												<span class="flex-1 truncate font-mono">{tbl.name}</span>
+												{#if tbl.type !== 'TABLE'}
+													<span class="md-chip">{tbl.type}</span>
 												{/if}
 												<button
 													type="button"
 													class="md-icon-btn opacity-0 group-hover/row:opacity-100"
 													style="width: 1.125rem; height: 1.125rem;"
-													title="修改表结构"
+													title={$t('sidebar.modify_table')}
 													onclick={(e) => {
 														e.stopPropagation();
-														onInspectTable?.(s, t.name);
+														onInspectTable?.(s, tbl.name);
 													}}
 												>
 													<span style="color: var(--md-on-surface-variant); font-size: 0.625rem;">⊞</span>
@@ -721,10 +723,10 @@
 														type="button"
 														class="md-icon-btn opacity-0 group-hover/row:opacity-100"
 														style="width: 1.125rem; height: 1.125rem;"
-														title="删除表"
+														title={$t('sidebar.delete_table')}
 														onclick={(e) => {
 															e.stopPropagation();
-															confirmingTable = { schema: s, table: t.name };
+															confirmingTable = { schema: s, table: tbl.name };
 														}}
 													>
 														<span style="color: var(--md-error); font-size: 0.625rem;">✕</span>
@@ -736,11 +738,11 @@
 												<ul class="ml-5 flex flex-col gap-px border-l" style="border-color: var(--md-outline-variant);">
 													{#if colsLoading[tk]}
 														<li class="px-3 py-1 text-[11px]" style="color: var(--md-on-surface-variant);">
-															加载中…
+															{$t('common.loading')}
 														</li>
 													{:else if (columnsByTable[tk] ?? []).length === 0}
 														<li class="px-3 py-1 text-[11px]" style="color: var(--md-on-surface-variant);">
-															无列
+															{$t('sidebar.no_columns')}
 														</li>
 													{:else}
 														{#each columnsByTable[tk] as c (c.name)}
@@ -790,8 +792,8 @@
 		<button
 			type="button"
 			class="resize-handle"
-			aria-label="拖拽调整侧栏宽度"
-			title="拖拽调整宽度（双击重置）"
+			aria-label={$t('sidebar.resize_aria')}
+			title={$t('sidebar.resize_hint')}
 			onmousedown={startResize}
 			ondblclick={() => (width = DEFAULT_WIDTH)}
 		></button>
@@ -799,26 +801,26 @@
 </aside>
 
 <!-- 创建 schema -->
-<Modal open={creating} title="新建 schema" size="sm" onClose={() => (creating = false)}>
+<Modal open={creating} title={$t('sidebar.new_schema')} size="sm" onClose={() => (creating = false)}>
 	<label class="flex flex-col gap-1 text-sm">
-		<span style="color: var(--md-on-surface-variant);">名称</span>
-		<input class="md-input" type="text" bind:value={newName} placeholder="例如 my_db" />
+		<span style="color: var(--md-on-surface-variant);">{$t('sidebar.name_label')}</span>
+		<input class="md-input" type="text" bind:value={newName} placeholder={$t('sidebar.name_placeholder')} />
 	</label>
 	{#snippet footer()}
 		<button class="md-btn-text" onclick={() => (creating = false)} disabled={createPending}>
-			取消
+			{$t('common.cancel')}
 		</button>
 		<button class="md-btn-filled" onclick={doCreate} disabled={createPending || !newName.trim()}>
-			{createPending ? '创建中…' : '创建'}
+			{createPending ? $t('common.creating') : $t('common.create')}
 		</button>
 	{/snippet}
 </Modal>
 
 <ConfirmDialog
 	open={confirming !== null}
-	title="删除 schema"
-	message={`确认删除 ${confirming}？库内所有对象将一并丢失，且无法恢复。`}
-	confirmText="删除"
+	title={$t('sidebar.dialog.delete_schema_title')}
+	message={confirming ? $t('sidebar.dialog.delete_schema_msg', { name: confirming }) : ''}
+	confirmText={$t('common.delete')}
 	danger
 	pending={deletePending}
 	onConfirm={doDelete}
@@ -827,11 +829,11 @@
 
 <ConfirmDialog
 	open={confirmingTable !== null}
-	title="删除表"
+	title={$t('sidebar.dialog.delete_table_title')}
 	message={confirmingTable
-		? `确认删除 ${confirmingTable.schema}.${confirmingTable.table}？该表所有数据将一并丢失，且无法恢复。`
+		? $t('sidebar.dialog.delete_table_msg', { schema: confirmingTable.schema, table: confirmingTable.table })
 		: ''}
-	confirmText="删除"
+	confirmText={$t('common.delete')}
 	danger
 	pending={deleteTablePending}
 	onConfirm={doDeleteTable}

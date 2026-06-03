@@ -1,4 +1,5 @@
 <script>
+	import { t } from '$lib/i18n';
 	/**
 	 * @typedef {Object} MenuItem
 	 * @property {string} label
@@ -53,7 +54,7 @@
 		type="button"
 		class="fixed inset-0 z-50 cursor-default"
 		style="background: transparent;"
-		aria-label="关闭菜单"
+		aria-label={$t('common.close_label')}
 		onclick={onClose}
 		oncontextmenu={(e) => { e.preventDefault(); onClose(); }}
 	></button>

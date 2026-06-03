@@ -131,6 +131,7 @@ type AppSettings struct {
 	ThemeMode    string `json:"themeMode"`    // "light" | "dark" | "auto"
 	LightThemeID string `json:"lightThemeId"` // 浅色模式主题 ID，空 = 内置 MD3
 	DarkThemeID  string `json:"darkThemeId"`  // 深色模式主题 ID，空 = 内置 MD3
+	Locale       string `json:"locale"`       // "zh-CN" | "zh-TW" | "en" | "ja" | "ru"
 }
 
 const settingsFileName = "settings.json"

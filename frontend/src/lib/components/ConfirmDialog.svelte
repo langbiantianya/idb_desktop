@@ -1,5 +1,6 @@
 <script>
 	import Modal from './Modal.svelte';
+	import { t } from '$lib/i18n';
 
 	/**
 	 * @typedef {Object} Props
@@ -19,8 +20,8 @@
 		open,
 		title,
 		message,
-		confirmText = '确认',
-		cancelText = '取消',
+		confirmText = $t('common.confirm'),
+		cancelText = $t('common.cancel'),
 		danger = false,
 		pending = false,
 		onConfirm,
@@ -39,7 +40,7 @@
 			onclick={onConfirm}
 			disabled={pending}
 		>
-			{pending ? '处理中…' : confirmText}
+			{pending ? $t('common.processing') : confirmText}
 		</button>
 	{/snippet}
 </Modal>

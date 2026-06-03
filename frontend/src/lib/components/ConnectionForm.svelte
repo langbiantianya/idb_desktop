@@ -9,6 +9,8 @@
 	} from '$lib/api/connections.js';
 	import { defaultConnection } from '$lib/stores/appState.js';
 	import { ok, err } from '$lib/stores/toasts.js';
+	import { t } from '$lib/i18n';
+	import { get } from 'svelte/store';
 	import ThemeToggle from './ThemeToggle.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 
@@ -74,7 +76,7 @@
 	async function save() {
 		const name = (conn.name ?? '').trim();
 		if (!name) {
-			err('请填写连接名称');
+			err(get(t)('conn.toast.fill_name'));
 			return;
 		}
 		try {
@@ -91,11 +93,11 @@
 			});
 			if (result) {
 				activeId = result.id;
-				ok(`已保存 ${name}`);
+				ok(get(t)('conn.toast.saved', { name }));
 				await refreshSaved();
 			}
 		} catch (e) {
-			err(e instanceof Error ? e.message : '保存失败');
+			err(e instanceof Error ? e.message : get(t)('conn.toast.save_failed'));
 		}
 	}
 
@@ -104,12 +106,12 @@
 		if (!id) return;
 		try {
 			await deleteConnectionProfile(id);
-			ok('已删除');
+			ok(get(t)('conn.toast.deleted'));
 			if (activeId === id) newProfile();
 			confirmDeleteId = null;
 			await refreshSaved();
 		} catch (e) {
-			err(e instanceof Error ? e.message : '删除失败');
+			err(e instanceof Error ? e.message : get(t)('conn.toast.delete_failed'));
 		}
 	}
 
@@ -119,7 +121,7 @@
 		try {
 			const resp = await listSchemas(conn);
 			if (!resp.success) {
-				err(resp.error ?? '连接失败');
+				err(resp.error ?? get(t)('conn.toast.connect_failed'));
 				return;
 			}
 			onConnected({ ...conn });
@@ -140,12 +142,12 @@
 			style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant); border-radius: var(--md-radius-lg); box-shadow: var(--md-elev-1);"
 		>
 			<header class="flex items-center justify-between border-b px-3 py-2.5" style="border-color: var(--md-outline-variant);">
-				<span class="text-xs font-medium" style="color: var(--md-on-surface-variant);">已保存</span>
+				<span class="text-xs font-medium" style="color: var(--md-on-surface-variant);">{$t('conn.saved')}</span>
 				<button
 					type="button"
 					class="md-icon-btn"
-					title="新建空白配置"
-					aria-label="新建"
+					title={$t('conn.new_blank')}
+					aria-label={$t('conn.new_aria')}
 					onclick={newProfile}
 				>
 					＋
@@ -154,7 +156,7 @@
 			<div class="flex-1 overflow-auto p-1">
 				{#if saved.length === 0}
 					<p class="px-3 py-6 text-center text-xs" style="color: var(--md-on-surface-variant);">
-						暂无保存的连接
+						{$t('conn.no_saved')}
 					</p>
 				{:else}
 					<ul class="flex flex-col gap-px">
@@ -178,19 +180,19 @@
 								>
 									<span class="text-xs" style="color: var(--md-primary);">{s.driver === 'Mysql' ? 'My' : 'Pg'}</span>
 									<div class="flex min-w-0 flex-1 flex-col">
-										<span class="truncate text-xs">{s.name || '(未命名)'}</span>
+										<span class="truncate text-xs">{s.name || $t('conn.unnamed')}</span>
 										<span class="truncate font-mono text-[10px]" style="color: var(--md-on-surface-variant);">
 											{s.user}@{s.host}:{s.port}
 										</span>
 									</div>
 									{#if s.hasPassword}
-										<span class="md-chip" title="已保存密码">PW</span>
+										<span class="md-chip" title={$t('conn.password_saved')}>PW</span>
 									{/if}
 									<button
 										type="button"
 										class="md-icon-btn opacity-0 group-hover:opacity-100"
 										style="width: 1.25rem; height: 1.25rem;"
-										title="删除"
+										title={$t('common.delete')}
 										onclick={(e) => {
 											e.stopPropagation();
 											confirmDeleteId = s.id;
@@ -211,12 +213,12 @@
 			<div class="flex items-center justify-between">
 				<div>
 					<h1 class="text-2xl font-semibold tracking-tight" style="color: var(--md-on-background);">
-						idb · 数据库管理
+						{$t('conn.title')}
 					</h1>
 				</div>
 				<div class="flex items-center gap-1">
 					<ThemeToggle />
-					<button class="md-icon-btn" onclick={() => goto('/settings')} title="设置">
+					<button class="md-icon-btn" onclick={() => goto('/settings')} title={$t('workspace.settings')}>
 						<svg width="18" height="18" viewBox="0 0 20 20" fill="none">
 							<path d="M8.325 2.317a1.417 1.417 0 013.35 0 1.417 1.417 0 002.142.866 1.417 1.417 0 012.368 2.368 1.417 1.417 0 00.866 2.142 1.417 1.417 0 010 3.35 1.417 1.417 0 00-.866 2.142 1.417 1.417 0 01-2.368 2.368 1.417 1.417 0 00-2.142.866 1.417 1.417 0 01-3.35 0 1.417 1.417 0 00-2.142-.866 1.417 1.417 0 01-2.368-2.368 1.417 1.417 0 00-.866-2.142 1.417 1.417 0 010-3.35 1.417 1.417 0 00.866-2.142 1.417 1.417 0 012.368-2.368 1.417 1.417 0 002.142-.866z" stroke="currentColor" stroke-width="1.3"/>
 							<circle cx="10" cy="10" r="2.5" stroke="currentColor" stroke-width="1.3"/>
@@ -231,56 +233,56 @@
 				onsubmit={submit}
 			>
 				<label class="col-span-2 flex flex-col gap-1 text-sm">
-					<span style="color: var(--md-on-surface-variant);">连接名称</span>
+					<span style="color: var(--md-on-surface-variant);">{$t('conn.name')}</span>
 					<input
 						class="md-input"
 						type="text"
 						bind:value={conn.name}
-						placeholder="例如 本地 MySQL"
+						placeholder={$t('conn.name_placeholder')}
 					/>
 				</label>
 				<label class="flex flex-col gap-1 text-sm">
-					<span style="color: var(--md-on-surface-variant);">驱动</span>
+					<span style="color: var(--md-on-surface-variant);">{$t('conn.driver')}</span>
 					<select class="md-input" bind:value={conn.driver} onchange={adjustDefaultPort}>
 						<option value="Mysql">MySQL</option>
 						<option value="Postgresql">PostgreSQL</option>
 					</select>
 				</label>
 				<label class="flex flex-col gap-1 text-sm">
-					<span style="color: var(--md-on-surface-variant);">主机</span>
+					<span style="color: var(--md-on-surface-variant);">{$t('conn.host')}</span>
 					<input class="md-input" type="text" bind:value={conn.host} required />
 				</label>
 				<label class="flex flex-col gap-1 text-sm">
-					<span style="color: var(--md-on-surface-variant);">端口</span>
+					<span style="color: var(--md-on-surface-variant);">{$t('conn.port')}</span>
 					<input class="md-input" type="number" bind:value={conn.port} min="1" max="65535" required />
 				</label>
 				<label class="flex flex-col gap-1 text-sm">
-					<span style="color: var(--md-on-surface-variant);">用户名</span>
+					<span style="color: var(--md-on-surface-variant);">{$t('conn.user')}</span>
 					<input class="md-input" type="text" bind:value={conn.user} required />
 				</label>
 				<label class="col-span-2 flex flex-col gap-1 text-sm">
-					<span style="color: var(--md-on-surface-variant);">密码</span>
+					<span style="color: var(--md-on-surface-variant);">{$t('conn.password')}</span>
 					<input class="md-input" type="password" bind:value={conn.password} autocomplete="off" />
 				</label>
 				<label class="col-span-2 flex flex-col gap-1 text-sm">
-					<span style="color: var(--md-on-surface-variant);">默认 database（可选）</span>
+					<span style="color: var(--md-on-surface-variant);">{$t('conn.database')}</span>
 					<input class="md-input" type="text" bind:value={conn.database} />
 				</label>
 
 				<label class="col-span-2 flex items-center gap-2 text-sm">
 					<input type="checkbox" bind:checked={savePassword} />
-					<span style="color: var(--md-on-surface);">保存密码</span>
+					<span style="color: var(--md-on-surface);">{$t('conn.save_password')}</span>
 					<span class="text-xs" style="color: var(--md-on-surface-variant);">
-						（Windows 用 DPAPI 绑定当前用户；其他平台 AES-GCM + 本地密钥文件）
+						{$t('conn.save_password_help')}
 					</span>
 				</label>
 
 				<div class="col-span-2 mt-2 flex items-center justify-between gap-2">
 					<button type="button" class="md-btn-text" onclick={save} disabled={pending}>
-						{activeId ? '保存修改' : '保存为新连接'}
+						{activeId ? $t('conn.save_changes') : $t('conn.save_as_new')}
 					</button>
 					<button type="submit" class="md-btn-filled" disabled={pending}>
-						{pending ? '请求中…' : '连接并加载 schema'}
+						{pending ? $t('conn.connecting') : $t('conn.connect')}
 					</button>
 				</div>
 			</form>
@@ -290,9 +292,9 @@
 
 <ConfirmDialog
 	open={confirmDeleteId !== null}
-	title="删除连接"
-	message="确认删除这条保存的连接？"
-	confirmText="删除"
+	title={$t('conn.delete_title')}
+	message={$t('conn.delete_msg')}
+	confirmText={$t('common.delete')}
 	danger
 	onConfirm={doDelete}
 	onCancel={() => (confirmDeleteId = null)}

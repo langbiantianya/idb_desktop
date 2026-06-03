@@ -5,6 +5,7 @@
 
 import { writable, get } from 'svelte/store';
 import { loadSettings, saveSettings, getThemeCSS } from '../api/themes.js';
+import { locale, readInitialLocale } from '../i18n/index.js';
 
 const STORAGE_KEY = 'idb.theme'; // 兼容旧版 localStorage
 
@@ -139,7 +140,8 @@ function persistSettings() {
 		version: 1,
 		themeMode: get(themeMode),
 		lightThemeId: get(lightThemeId),
-		darkThemeId: get(darkThemeId)
+		darkThemeId: get(darkThemeId),
+		locale: get(locale)
 	});
 }
 
@@ -158,6 +160,12 @@ export async function initTheme() {
 		}
 		lightThemeId.set(settings.lightThemeId ?? '');
 		darkThemeId.set(settings.darkThemeId ?? '');
+		// 语言：优先 Go 设置，其次 localStorage，最后浏览器检测
+		if (settings.locale) {
+			locale.set(settings.locale);
+		} else {
+			locale.set(readInitialLocale());
+		}
 		// 兼容：同步写回 localStorage
 		localStorage.setItem(STORAGE_KEY, get(themeMode));
 	} catch {

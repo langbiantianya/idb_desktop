@@ -11,6 +11,8 @@
 	import { asDataPage, asColumnList, asSqlResult, isLob, renderCell } from '$lib/api/normalize.js';
 	import { formatTemporal, temporalKind } from '$lib/temporal.js';
 	import { ok, err } from '$lib/stores/toasts.js';
+	import { t } from '$lib/i18n';
+	import { get } from 'svelte/store';
 	import { isReadOnlySchema } from '$lib/readonly.js';
 	import { getWhereCompletionItems, getOrderByKeywords } from '$lib/sqlCompletion.js';
 	import ContextMenu from './ContextMenu.svelte';
@@ -74,6 +76,24 @@
 		return m;
 	});
 
+	let confirmDeleteMsg = $derived(
+		confirmDelete
+			? `${get(t)('datagrid.delete_row_msg')}\n${JSON.stringify(buildRowWhere(confirmDelete), null, 2)}`
+			: ''
+	);
+
+	/** @param {number} p @param {number} tp */
+	function pageText(p, tp) {
+		if (tp > 1) return get(t)('datagrid.page_of', { page: p, totalPages: tp });
+		return get(t)('datagrid.page_single', { page: p });
+	}
+
+	let streamingText = $derived.by(() => {
+		const count = streamedRowCount.toLocaleString();
+		const totalStr = total !== null ? ` / ${total.toLocaleString()}` : '';
+		return get(t)('datagrid.loading_streaming', { count, total: totalStr });
+	});
+
 	/**
 	 * 渲染单元格——时间类按列声明精度整形，其他走默认。
 	 * @param {string} col @param {unknown} v
@@ -81,8 +101,8 @@
 	function renderCellWithType(col, v) {
 		const meta = metaByName[col];
 		if (meta && temporalKind(meta.type)) {
-			const t = formatTemporal(v, meta);
-			if (t !== null) return t;
+			const formatted = formatTemporal(v, meta);
+			if (formatted !== null) return formatted;
 		}
 		return renderCell(v);
 	}
@@ -135,7 +155,7 @@
 		try {
 			const resp = await listData(schemaConn, tableName, page, pageSize, opts);
 			if (!resp.success) {
-				err(resp.error ?? '加载失败');
+				err(resp.error ?? get(t)('datagrid.toast.load_failed'));
 				rows = [];
 				columns = [];
 				total = null;
@@ -194,7 +214,7 @@
 				opts
 			);
 			if (!resp.success) {
-				err(resp.error ?? '流式加载失败');
+				err(resp.error ?? get(t)('datagrid.toast.stream_failed'));
 			}
 			// 最终刷新
 			rows = accRows;
@@ -234,7 +254,7 @@
 
 	async function doInsert(values) {
 		if (readOnly) {
-			err(`${schemaName} 是 MySQL 系统库，禁止写入`);
+			err(get(t)('datagrid.toast.mysql_readonly_write', { schema: schemaName }));
 			inserting = false;
 			return;
 		}
@@ -242,10 +262,10 @@
 		try {
 			const resp = await createRow(schemaConn, tableName, values);
 			if (!resp.success) {
-				err(resp.error ?? '插入失败');
+				err(resp.error ?? get(t)('datagrid.toast.insert_failed'));
 				return;
 			}
-			ok('已插入 1 行');
+			ok(get(t)('datagrid.toast.inserted'));
 			inserting = false;
 			await load();
 		} finally {
@@ -255,7 +275,7 @@
 
 	async function doUpdate(changes, where) {
 		if (readOnly) {
-			err(`${schemaName} 是 MySQL 系统库，禁止更新`);
+			err(get(t)('datagrid.toast.mysql_readonly_update', { schema: schemaName }));
 			editing = null;
 			return;
 		}
@@ -263,10 +283,10 @@
 		try {
 			const resp = await updateRow(schemaConn, tableName, changes, where ?? {});
 			if (!resp.success) {
-				err(resp.error ?? '更新失败');
+				err(resp.error ?? get(t)('datagrid.toast.update_failed'));
 				return;
 			}
-			ok('已更新');
+			ok(get(t)('datagrid.toast.updated'));
 			editing = null;
 			await load();
 		} finally {
@@ -277,7 +297,7 @@
 	async function doDelete() {
 		if (!confirmDelete) return;
 		if (readOnly) {
-			err(`${schemaName} 是 MySQL 系统库，禁止删除`);
+			err(get(t)('datagrid.toast.mysql_readonly_delete', { schema: schemaName }));
 			confirmDelete = null;
 			return;
 		}
@@ -286,10 +306,10 @@
 			const where = buildRowWhere(confirmDelete);
 			const resp = await deleteRow(schemaConn, tableName, where);
 			if (!resp.success) {
-				err(resp.error ?? '删除失败');
+				err(resp.error ?? get(t)('datagrid.toast.delete_failed'));
 				return;
 			}
-			ok('已删除');
+			ok(get(t)('datagrid.toast.deleted'));
 			confirmDelete = null;
 			await load();
 		} finally {
@@ -299,7 +319,7 @@
 
 	async function openLob(row, column) {
 		if (pkColumns.length === 0) {
-			err('该表无主键，无法做单行精准查询');
+			err(get(t)('datagrid.toast.no_pk'));
 			return;
 		}
 		lobView = { column, row, loading: true, value: null };
@@ -310,7 +330,7 @@
 			const sql = `SELECT ${quoteIdent(column)} FROM ${quoteIdent(tableName)} WHERE ${where} LIMIT 1`;
 			const resp = await executeSql(schemaConn, sql);
 			if (!resp.success) {
-				err(resp.error ?? '查询失败');
+				err(resp.error ?? get(t)('datagrid.toast.query_failed'));
 				lobView = null;
 				return;
 			}
@@ -337,18 +357,18 @@
 	async function copyCell(col, value) {
 		try {
 			await navigator.clipboard.writeText(String(value ?? ''));
-			ok('已复制');
+			ok(get(t)('common.copied'));
 		} catch (e) {
-			err(e instanceof Error ? e.message : '复制失败');
+			err(e instanceof Error ? e.message : get(t)('common.copy_failed'));
 		}
 	}
 
-	async function copyText(text, label = '已复制') {
+	async function copyText(text, label) {
 		try {
 			await navigator.clipboard.writeText(text);
-			ok(label);
+			ok(label ?? get(t)('common.copied'));
 		} catch (e) {
-			err(e instanceof Error ? e.message : '复制失败');
+			err(e instanceof Error ? e.message : get(t)('common.copy_failed'));
 		}
 	}
 
@@ -423,7 +443,7 @@
 			<div class="flex shrink-0 items-center gap-1.5 ml-auto">
 				<button
 					class="md-icon-btn"
-					title="刷新"
+					title={$t('datagrid.refresh')}
 					onclick={() => {
 						if (pageSize === 0) loadStreaming();
 						else load();
@@ -433,7 +453,7 @@
 					↻
 				</button>
 				{#if readOnly}
-					<span class="md-chip" title="MySQL 系统库，只读">RO · 只读</span>
+					<span class="md-chip" title={$t('datagrid.ro_tooltip')}>{$t('datagrid.ro_readonly')}</span>
 				{:else}
 					<button
 						class="md-btn-filled"
@@ -441,7 +461,7 @@
 						onclick={() => (inserting = true)}
 						disabled={columns.length === 0 && columnMeta.length === 0}
 					>
-						+ 插入
+						{$t('datagrid.insert')}
 					</button>
 				{/if}
 			</div>
@@ -460,7 +480,7 @@
 						else load();
 					}}
 					getSuggestions={getWhereSuggestions}
-					placeholder="WHERE（如 status = 'active'）"
+					placeholder={$t('datagrid.where_placeholder')}
 				/>
 			</div>
 			<span class="shrink-0 text-xs font-mono" style="color: var(--md-on-surface-variant);">ORDER BY</span>
@@ -473,7 +493,7 @@
 						else load();
 					}}
 					getSuggestions={getOrderBySuggestions}
-					placeholder="ORDER BY（如 created_at DESC）"
+					placeholder={$t('datagrid.orderby_placeholder')}
 				/>
 			</div>
 		</div>
@@ -482,7 +502,7 @@
 	<div class="flex-1 overflow-auto pb-3">
 		{#if rows.length === 0 && !pending}
 			<p class="py-8 text-center text-sm" style="color: var(--md-on-surface-variant);">
-				空表 / 当前页无数据
+				{$t('datagrid.empty')}
 			</p>
 		{:else if columns.length > 0}
 			<table class="min-w-full text-left text-xs">
@@ -499,7 +519,7 @@
 							>
 								{col}
 								{#if pkColumns.includes(col)}
-									<span class="ml-1 md-chip-pk">PK</span>
+									<span class="ml-1 md-chip-pk">{$t('common.pk')}</span>
 								{/if}
 							</th>
 						{/each}
@@ -508,7 +528,7 @@
 								class="sticky right-0 px-3 py-2 font-medium"
 								style="background: var(--md-surface-container); border-bottom: 1px solid var(--md-outline-variant); z-index: 2;"
 							>
-								操作
+								{$t('datagrid.action_col')}
 							</th>
 						{/if}
 					</tr>
@@ -532,7 +552,7 @@
 											class="italic underline decoration-dotted"
 											style="color: var(--md-primary);"
 											onclick={() => openLob(row, col)}
-											title="点击查看完整内容"
+											title={$t('datagrid.lob_tooltip')}
 										>
 											{row[col]}
 										</button>
@@ -555,14 +575,14 @@
 											style="padding: 0.125rem 0.5rem;"
 											onclick={() => (editing = row)}
 										>
-											编辑
+											{$t('common.edit')}
 										</button>
 										<button
 											class="md-btn-text"
 											style="padding: 0.125rem 0.5rem; color: var(--md-error);"
 											onclick={() => (confirmDelete = row)}
 										>
-											删除
+											{$t('common.delete')}
 										</button>
 									</div>
 								</td>
@@ -581,7 +601,7 @@
 			{#if pageSize > 0}
 				<button
 					class="md-icon-btn"
-					title="上一页"
+					title={$t('datagrid.prev_page')}
 					onclick={() => gotoPage(page - 1)}
 					disabled={pending || page <= 1}
 				>
@@ -595,17 +615,17 @@
 						onchange={(e) => gotoPage(Number(e.currentTarget.value))}
 					>
 						{#each { length: totalPages } as _, i}
-							<option value={i + 1}>第 {i + 1} / {totalPages} 页</option>
+							<option value={i + 1}>{pageText(i + 1, totalPages)}</option>
 						{/each}
 					</select>
 				{:else}
 					<span class="text-xs" style="color: var(--md-on-surface-variant);">
-						第 {page} 页
+						{pageText(page, totalPages ?? 1)}
 					</span>
 				{/if}
 				<button
 					class="md-icon-btn"
-					title="下一页"
+					title={$t('datagrid.next_page')}
 					onclick={() => gotoPage(page + 1)}
 					disabled={pending || (totalPages !== null ? page >= totalPages : rows.length < pageSize)}
 				>
@@ -621,22 +641,20 @@
 				onchange={(e) => changePageSize(Number(e.currentTarget.value))}
 			>
 				{#each PAGE_SIZE_OPTIONS as opt (opt)}
-					<option value={opt}>{opt === 0 ? '全量' : `${opt} 条/页`}</option>
+					<option value={opt}>{opt === 0 ? $t('datagrid.all_rows') : $t('datagrid.rows_per_page', { opt })}</option>
 				{/each}
 			</select>
 			{#if pageSize > 0 && total !== null}
 				<span class="text-xs" style="color: var(--md-on-surface-variant);">
-					共 {total.toLocaleString()} 条
+					{$t('datagrid.total', { total: total.toLocaleString() })}
 				</span>
 			{:else if pageSize === 0 && streaming}
 				<span class="animate-pulse text-xs" style="color: var(--md-primary);">
-					加载中 {streamedRowCount.toLocaleString()} 行{total !== null
-						? ` / ${total.toLocaleString()}`
-						: ''}…
+					{streamingText}
 				</span>
 			{:else if pageSize === 0 && total !== null}
 				<span class="text-xs" style="color: var(--md-on-surface-variant);">
-					共 {total.toLocaleString()} 条
+					{$t('datagrid.total', { total: total.toLocaleString() })}
 				</span>
 			{/if}
 		</div>
@@ -645,7 +663,7 @@
 
 <RowEditor
 	open={inserting}
-	title={`插入 · ${tableName}`}
+	title={$t('datagrid.insert_title', { table: tableName })}
 	columns={columnMeta.length > 0 ? columnMeta.map((c) => c.name) : columns}
 	{columnMeta}
 	initial={{}}
@@ -656,7 +674,7 @@
 
 <RowEditor
 	open={editing !== null}
-	title={`编辑 · ${tableName}`}
+	title={$t('datagrid.edit_title', { table: tableName })}
 	columns={columnMeta.length > 0 ? columnMeta.map((c) => c.name) : columns}
 	{columnMeta}
 	initial={editing ?? {}}
@@ -669,11 +687,9 @@
 
 <ConfirmDialog
 	open={confirmDelete !== null}
-	title="删除该行"
-	message={confirmDelete
-		? `根据 ${pkColumns.length > 0 ? '主键' : '所有列'}匹配删除：\n${JSON.stringify(buildRowWhere(confirmDelete), null, 2)}`
-		: ''}
-	confirmText="删除"
+	title={$t('datagrid.delete_row_title')}
+	message={confirmDeleteMsg}
+	confirmText={$t('common.delete')}
 	danger
 	pending={actionPending}
 	onConfirm={doDelete}
@@ -687,7 +703,7 @@
 	onClose={() => (lobView = null)}
 >
 	{#if lobView?.loading}
-		<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">读取中…</p>
+		<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">{$t('datagrid.loading')}</p>
 	{:else if lobView?.value === null || lobView?.value === undefined}
 		<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">NULL</p>
 	{:else}
@@ -707,28 +723,28 @@
 				items: [
 					cellCtx?.selection
 						? {
-								label: '复制选中文本',
+								label: $t('datagrid.ctx.copy_selected'),
 								icon: '⧉',
 								onClick: () => {
 									if (cellCtx) copyText(cellCtx.selection);
 								}
 							}
 						: {
-								label: '复制',
+								label: $t('datagrid.ctx.copy'),
 								icon: '⧉',
 								onClick: () => {
 									if (cellCtx) copyCell(cellCtx.col, cellCtx.value);
 								}
 							},
 					{
-						label: '复制此行',
+						label: $t('datagrid.ctx.copy_row'),
 						icon: '⊟',
 						onClick: () => {
-							if (cellCtx) copyText(rowToTsv(cellCtx.row), '已复制此行');
+							if (cellCtx) copyText(rowToTsv(cellCtx.row), $t('datagrid.toast.row_copied'));
 						}
 					},
 					{
-						label: '复制列名',
+						label: $t('datagrid.ctx.copy_column'),
 						icon: '⧉',
 						onClick: () => {
 							if (cellCtx) copyCell(cellCtx.col, cellCtx.col);
@@ -736,7 +752,7 @@
 					},
 					cellCtx?.value !== null && cellCtx?.value !== undefined && isLob(cellCtx.value)
 						? {
-								label: '查看完整内容',
+								label: $t('datagrid.ctx.view_lob'),
 								icon: '⊕',
 								onClick: () => {
 									if (cellCtx) openLob(cellCtx.row, cellCtx.col);
@@ -745,7 +761,7 @@
 						: null,
 					!readOnly
 						? {
-								label: '编辑此行',
+								label: $t('datagrid.ctx.edit_row'),
 								icon: '✎',
 								onClick: () => {
 									if (cellCtx) editing = cellCtx.row;
@@ -754,7 +770,7 @@
 						: null,
 					!readOnly
 						? {
-								label: '删除此行',
+								label: $t('datagrid.ctx.delete_row'),
 								icon: '✕',
 								danger: true,
 								onClick: () => {
@@ -775,7 +791,7 @@
 				y: headerCtx.y,
 				items: [
 					{
-						label: '复制列名',
+						label: $t('datagrid.ctx.copy_column'),
 						icon: '⧉',
 						onClick: () => {
 							if (headerCtx) copyCell(headerCtx.col, headerCtx.col);

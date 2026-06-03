@@ -5,19 +5,18 @@
 		lightThemeId,
 		darkThemeId,
 		resolvedTheme,
-		settingsLoaded,
 		setTheme,
 		setLightTheme,
 		setDarkTheme
 	} from '$lib/stores/themeStore.js';
 	import { listThemes } from '$lib/api/themes.js';
+	import { t, locale, setLocale, locales } from '$lib/i18n';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 
 	/** @type {import('$lib/api/themes.js').ThemeInfo[]} */
 	let themes = $state([]);
 	let loading = $state(true);
 
-	// 从 Go 加载自定义主题列表
 	$effect(() => {
 		listThemes().then((t) => {
 			themes = t;
@@ -25,11 +24,10 @@
 		});
 	});
 
-	let lightThemes = $derived(themes.filter((t) => t.type === 'light'));
-	let darkThemes = $derived(themes.filter((t) => t.type === 'dark'));
+	let lightThemes = $derived(themes.filter((th) => th.type === 'light'));
+	let darkThemes = $derived(themes.filter((th) => th.type === 'dark'));
 
 	function goBack() {
-		// 简单返回：如果有历史就回去，否则去首页
 		if (typeof window !== 'undefined' && window.history.length > 1) {
 			window.history.back();
 		} else {
@@ -39,35 +37,47 @@
 </script>
 
 <div class="flex h-screen flex-col overflow-hidden" style="background: var(--md-background); color: var(--md-on-background);">
-	<!-- 顶栏 -->
 	<header
 		class="flex shrink-0 items-center gap-3 px-4 py-3"
 		style="background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant);"
 	>
-		<button class="md-icon-btn" onclick={goBack} title="返回">
+		<button class="md-icon-btn" onclick={goBack} title={$t('settings.back')}>
 			<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
 				<path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 			</svg>
 		</button>
-		<h1 class="text-lg font-medium">设置</h1>
+		<h1 class="text-lg font-medium">{$t('settings.title')}</h1>
 	</header>
 
-	<!-- 内容 -->
 	<main class="flex-1 overflow-auto px-6 py-6">
 		<div class="mx-auto max-w-lg space-y-8">
 
+			<!-- 语言 -->
+			<section class="space-y-3">
+				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">{$t('settings.language')}</h2>
+				<select
+					class="md-input w-full text-sm"
+					value={$locale}
+					onchange={(e) => setLocale(e.currentTarget.value)}
+				>
+					{#each locales as loc (loc.code)}
+						<option value={loc.code}>{loc.nativeName}</option>
+					{/each}
+				</select>
+			</section>
+
 			<!-- 主题模式 -->
 			<section class="space-y-3">
-				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">主题模式</h2>
+				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">{$t('settings.theme_mode')}</h2>
 				<div class="flex items-center gap-3">
 					<ThemeToggle />
 					<span class="text-xs" style="color: var(--md-on-surface-variant);">
 						{#if $themeMode === 'auto'}
-							跟随系统（当前：{$resolvedTheme === 'dark' ? '深色' : '浅色'}）
+							{$t('settings.follow_system', { theme: $resolvedTheme === 'dark' ? $t('settings.dark') : $t('settings.light') })}
 						{:else if $themeMode === 'light'}
-							浅色模式
+							{$t('settings.light_mode')}
 						{:else}
-							深色模式
+							{$t('settings.dark_mode')}
 						{/if}
 					</span>
 				</div>
@@ -75,23 +85,24 @@
 
 			<!-- 浅色主题 -->
 			<section class="space-y-3">
-				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">浅色主题</h2>
+				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">{$t('settings.light_theme')}</h2>
 				{#if loading}
-					<p class="text-xs animate-pulse" style="color: var(--md-on-surface-variant);">加载中…</p>
+					<p class="text-xs animate-pulse" style="color: var(--md-on-surface-variant);">{$t('common.loading')}</p>
 				{:else}
 					<select
 						class="md-input w-full text-sm"
 						value={$lightThemeId}
 						onchange={(e) => setLightTheme(e.currentTarget.value)}
 					>
-						<option value="">MD3 亮色（内置）</option>
-						{#each lightThemes as t (t.id)}
-							<option value={t.id}>{t.name}</option>
+						<option value="">{$t('settings.builtin_light')}</option>
+						{#each lightThemes as th (th.id)}
+							<option value={th.id}>{th.name}</option>
 						{/each}
 					</select>
 					{#if lightThemes.length === 0}
 						<p class="text-xs" style="color: var(--md-on-surface-variant);">
-							将浅色主题 .css 文件放入 <code class="font-mono text-[11px]" style="color: var(--md-primary);">~/.config/idb/theme/</code> 目录即可
+							{$t('settings.theme_help', { mode: $t('settings.light') })}
+							<code class="font-mono text-[11px]" style="color: var(--md-primary);">~/.config/idb/theme/</code>
 						</p>
 					{/if}
 				{/if}
@@ -99,23 +110,24 @@
 
 			<!-- 深色主题 -->
 			<section class="space-y-3">
-				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">深色主题</h2>
+				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">{$t('settings.dark_theme')}</h2>
 				{#if loading}
-					<p class="text-xs animate-pulse" style="color: var(--md-on-surface-variant);">加载中…</p>
+					<p class="text-xs animate-pulse" style="color: var(--md-on-surface-variant);">{$t('common.loading')}</p>
 				{:else}
 					<select
 						class="md-input w-full text-sm"
 						value={$darkThemeId}
 						onchange={(e) => setDarkTheme(e.currentTarget.value)}
 					>
-						<option value="">MD3 暗色（内置）</option>
-						{#each darkThemes as t (t.id)}
-							<option value={t.id}>{t.name}</option>
+						<option value="">{$t('settings.builtin_dark')}</option>
+						{#each darkThemes as th (th.id)}
+							<option value={th.id}>{th.name}</option>
 						{/each}
 					</select>
 					{#if darkThemes.length === 0}
 						<p class="text-xs" style="color: var(--md-on-surface-variant);">
-							将深色主题 .css 文件放入 <code class="font-mono text-[11px]" style="color: var(--md-primary);">~/.config/idb/theme/</code> 目录即可
+							{$t('settings.theme_help', { mode: $t('settings.dark') })}
+							<code class="font-mono text-[11px]" style="color: var(--md-primary);">~/.config/idb/theme/</code>
 						</p>
 					{/if}
 				{/if}
@@ -126,25 +138,23 @@
 				class="rounded-lg p-4 text-xs leading-relaxed"
 				style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant); color: var(--md-on-surface-variant);"
 			>
-				<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">自定义主题文件格式</h3>
+				<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">{$t('settings.custom_theme_format')}</h3>
 				<pre class="overflow-auto font-mono text-[11px] leading-relaxed" style="color: var(--md-on-surface-variant);">{`/* @idb-theme
-   name: 霓虹紫
+   name: Cyberpunk
    type: dark
 */
 
 :root {
-  --md-primary: #D0BCFF;
-  --md-on-primary: #381E72;
-  --md-primary-container: #4F378B;
-  --md-on-primary-container: #EADDFF;
-  /* ... 其他 MD3 变量 ... */
+  --md-primary: #00f0ff;
+  --md-on-primary: #00363b;
+  /* ... */
 }`}</pre>
 				<p class="mt-2">
-					文件路径：<code class="font-mono text-[11px]" style="color: var(--md-primary);">~/.config/idb/theme/*.css</code>
+					{$t('settings.file_path')}<code class="font-mono text-[11px]" style="color: var(--md-primary);">~/.config/idb/theme/*.css</code>
 				</p>
 				<p class="mt-1">
-					<code class="font-mono text-[11px]">type</code> 决定主题出现在哪个分组。
-					完整变量列表请参考内置主题。
+					<code class="font-mono text-[11px]">type</code> {$t('settings.type_hint')}
+					{$t('settings.vars_hint')}
 				</p>
 			</section>
 

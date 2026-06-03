@@ -1,4 +1,6 @@
 <script>
+	import { t } from '$lib/i18n';
+	import { get } from 'svelte/store';
 	import { executeSql, executeSqlStreaming, listSchemas, listTables, listColumns } from '$lib/api';
 	import {
 		asSqlResult,
@@ -67,18 +69,18 @@
 	async function copyValue(value) {
 		try {
 			await navigator.clipboard.writeText(String(value ?? ''));
-			ok('已复制');
+			ok(get(t)('common.copied'));
 		} catch (e) {
-			err(e instanceof Error ? e.message : '复制失败');
+			err(e instanceof Error ? e.message : get(t)('common.copy_failed'));
 		}
 	}
 
-	async function copyText(text, label = '已复制') {
+	async function copyText(text, label = get(t)('common.copied')) {
 		try {
 			await navigator.clipboard.writeText(text);
 			ok(label);
 		} catch (e) {
-			err(e instanceof Error ? e.message : '复制失败');
+			err(e instanceof Error ? e.message : get(t)('common.copy_failed'));
 		}
 	}
 
@@ -275,7 +277,7 @@
 			});
 			if (formatted !== sql) sql = formatted;
 		} catch (e) {
-			err(e instanceof Error ? e.message : 'SQL 格式化失败');
+			err(e instanceof Error ? e.message : get(t)('sql.toast.format_failed'));
 		}
 	}
 
@@ -368,7 +370,7 @@
 			for (const stmt of stmts) {
 				const kw = detectWriteKeyword(stmt);
 				if (kw) {
-					err(`MySQL 系统库只读，禁止执行 ${kw} 语句`);
+					err(get(t)('sql.toast.mysql_readonly', { kw }));
 					return;
 				}
 			}
@@ -396,7 +398,7 @@
 							}
 						});
 						if (!resp.success) {
-							collected.push({ sql: stmt, success: false, error: resp.error ?? 'SQL 执行失败', rows: [], columns: [], affectedRows: null });
+							collected.push({ sql: stmt, success: false, error: resp.error ?? get(t)('sql.exec_failed'), rows: [], columns: [], affectedRows: null });
 						} else {
 							collected.push({ sql: stmt, success: true, error: null, rows: accRows, columns: [...colSet], affectedRows: null });
 						}
@@ -404,7 +406,7 @@
 						// 非 SELECT 走普通响应
 						const resp = await executeSql(schemaConn, stmt);
 						if (!resp.success) {
-							collected.push({ sql: stmt, success: false, error: resp.error ?? 'SQL 执行失败', rows: [], columns: [], affectedRows: null });
+							collected.push({ sql: stmt, success: false, error: resp.error ?? get(t)('sql.exec_failed'), rows: [], columns: [], affectedRows: null });
 							continue;
 						}
 						const r = asSqlResult(resp.data);
@@ -420,9 +422,9 @@
 			const failed = collected.filter((r) => !r.success).length;
 			const totalAffected = collected.reduce((acc, r) => acc + (r.affectedRows ?? 0), 0);
 			if (failed > 0) {
-				err(`${stmts.length} 条语句中 ${failed} 条失败`);
+				err(get(t)('sql.toast.stmts_failed', { total: stmts.length, failed }));
 			} else if (totalAffected > 0) {
-				ok(`受影响行数：${totalAffected}（共 ${stmts.length} 条）`);
+				ok(get(t)('sql.toast.stmts_ok', { affected: totalAffected, total: stmts.length }));
 			}
 		} finally {
 			pending = false;
@@ -435,10 +437,10 @@
 		class="flex items-center justify-between px-3 py-2"
 		style="background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant);"
 	>
-		<h2 class="text-sm font-medium" style="color: var(--md-on-surface);">SQL 控制台</h2>
+		<h2 class="text-sm font-medium" style="color: var(--md-on-surface);">{$t('sql.title')}</h2>
 		<div class="flex items-center gap-3">
 			<div class="text-xs font-mono" style="color: var(--md-on-surface-variant);">
-				{schemaConn.driver}://{schemaConn.host}:{schemaConn.port}/{schemaConn.database || '(未选库)'}
+				{schemaConn.driver}://{schemaConn.host}:{schemaConn.port}/{schemaConn.database || $t('sql.no_db')}
 			</div>
 			<div class="flex items-center gap-1">
 				<button
@@ -446,17 +448,17 @@
 					class="sql-tool-btn"
 					onclick={format}
 					disabled={!sql.trim()}
-					title="格式化 (Ctrl/Cmd + Shift + F)"
+					title={$t('sql.format_tooltip')}
 				>
-					格式化
+					{$t('sql.format')}
 				</button>
 				<button
 					type="button"
 					class="sql-run-btn"
 					onclick={run}
 					disabled={pending || !sql.trim()}
-					title="执行 (Ctrl/Cmd + Enter)"
-					aria-label="执行"
+					title={$t('sql.run_tooltip')}
+					aria-label={$t('sql.run_aria')}
 				>
 					{#if pending}
 						<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
@@ -483,7 +485,7 @@
 				onCtrlEnter={run}
 				onFormat={format}
 				{getSuggestions}
-				placeholder={'SELECT id, name FROM users LIMIT 10;\n\nCtrl/Cmd + Enter 执行（有选中则执行选中部分）   Ctrl/Cmd + Shift + F 格式化'}
+				placeholder={$t('sql.placeholder')}
 			/>
 		</div>
 
@@ -525,14 +527,14 @@
 						class="px-4 py-3 text-sm"
 						style="background: var(--md-error-container, #F9DEDC); color: var(--md-on-error-container, #410E0B); border-top: 1px solid var(--md-outline-variant);"
 					>
-						{cur.error ?? '执行失败'}
+						{cur.error ?? $t('sql.exec_failed')}
 					</div>
 				{:else if cur.affectedRows !== null && cur.rows.length === 0}
 					<div
 						class="px-4 py-3 text-sm"
 						style="background: var(--md-success-container); color: var(--md-on-success-container); border-top: 1px solid var(--md-outline-variant);"
 					>
-						受影响行数：{cur.affectedRows}
+						{$t('sql.affected_rows', { count: cur.affectedRows })}
 					</div>
 				{:else if cur.rows.length > 0 && cur.columns.length > 0}
 					<div class="min-h-0 flex-1 overflow-auto" style="border-top: 1px solid var(--md-outline-variant);">
@@ -574,9 +576,9 @@
 							</tbody>
 						</table>
 					</div>
-					<p class="px-3 py-1.5 text-right text-xs" style="color: var(--md-on-surface-variant); border-top: 1px solid var(--md-outline-variant);">{cur.rows.length} 行结果</p>
+					<p class="px-3 py-1.5 text-right text-xs" style="color: var(--md-on-surface-variant); border-top: 1px solid var(--md-outline-variant);">{$t('sql.rows_result', { count: cur.rows.length })}</p>
 				{:else}
-					<p class="px-3 py-6 text-center text-sm" style="color: var(--md-on-surface-variant); border-top: 1px solid var(--md-outline-variant);">无结果</p>
+					<p class="px-3 py-6 text-center text-sm" style="color: var(--md-on-surface-variant); border-top: 1px solid var(--md-outline-variant);">{$t('sql.no_result')}</p>
 				{/if}
 			</div>
 		{/if}
@@ -591,28 +593,28 @@
 				items: [
 					cellCtx?.selection
 						? {
-								label: '复制选中文本',
+								label: $t('sql.ctx.copy_selected'),
 								icon: '⧉',
 								onClick: () => {
 									if (cellCtx) copyText(cellCtx.selection);
 								}
 							}
 						: {
-								label: '复制',
+								label: $t('sql.ctx.copy'),
 								icon: '⧉',
 								onClick: () => {
 									if (cellCtx) copyValue(cellCtx.value);
 								}
 							},
 					{
-						label: '复制此行',
+						label: $t('sql.ctx.copy_row'),
 						icon: '⊟',
 						onClick: () => {
-							if (cellCtx) copyText(rowToTsv(results[activeResultIdx]?.columns ?? [], cellCtx.row), '已复制此行');
+							if (cellCtx) copyText(rowToTsv(results[activeResultIdx]?.columns ?? [], cellCtx.row), get(t)('datagrid.toast.row_copied'));
 						}
 					},
 					{
-						label: '复制列名',
+						label: $t('sql.ctx.copy_column'),
 						icon: '⧉',
 						onClick: () => {
 							if (cellCtx) copyValue(cellCtx.col);
@@ -620,7 +622,7 @@
 					},
 					cellCtx?.value !== null && cellCtx?.value !== undefined && isLob(cellCtx.value)
 						? {
-								label: '查看完整内容',
+								label: $t('sql.ctx.view_lob'),
 								icon: '⊕',
 								onClick: () => {
 									if (cellCtx) copyValue(cellCtx.value);
@@ -638,7 +640,7 @@
 		x: headerCtx.x,
 		y: headerCtx.y,
 		items: [
-			{ label: '复制列名', icon: '⧉', onClick: () => { if (headerCtx) copyValue(headerCtx.col); } }
+			{ label: $t('sql.ctx.copy_column'), icon: '⧉', onClick: () => { if (headerCtx) copyValue(headerCtx.col); } }
 		]
 	} : null}
 	onClose={() => (headerCtx = null)}
