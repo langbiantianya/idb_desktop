@@ -1,0 +1,59 @@
+/* @idb-theme
+   name: 赛博朋克
+   type: dark
+*/
+
+:root {
+	color-scheme: dark;
+
+	/* ---- neon palette ---- */
+	--md-primary: #00f0ff;
+	--md-on-primary: #00363b;
+	--md-primary-container: #004f56;
+	--md-on-primary-container: #6ff7ff;
+
+	--md-secondary: #ff2d78;
+	--md-on-secondary: #5e0028;
+	--md-secondary-container: #7e0038;
+	--md-on-secondary-container: #ffb1c8;
+
+	--md-tertiary: #f5e946;
+	--md-on-tertiary: #3a3300;
+	--md-tertiary-container: #524a00;
+	--md-on-tertiary-container: #fff17b;
+
+	--md-error: #ff5555;
+	--md-on-error: #4a0000;
+	--md-error-container: #6b0000;
+	--md-on-error-container: #ffaaaa;
+
+	--md-success: #39ff7f;
+	--md-on-success: #003912;
+	--md-success-container: #00531e;
+	--md-on-success-container: #a0ffbe;
+
+	/* ---- dark surfaces with blue undertone ---- */
+	--md-background: #0a0e1a;
+	--md-on-background: #e0e6f0;
+	--md-surface: #0a0e1a;
+	--md-on-surface: #e0e6f0;
+	--md-surface-variant: #1c2236;
+	--md-on-surface-variant: #a0a8c0;
+	--md-surface-dim: #0a0e1a;
+	--md-surface-bright: #2a3050;
+
+	--md-surface-container-lowest: #060a14;
+	--md-surface-container-low: #0f1420;
+	--md-surface-container: #141a2e;
+	--md-surface-container-high: #1c2440;
+	--md-surface-container-highest: #242e52;
+
+	--md-outline: #3a4468;
+	--md-outline-variant: #1e2640;
+	--md-scrim: #000000;
+	--md-shadow: #000000;
+
+	--md-elev-1: 0 1px 3px rgb(0 240 255 / 0.08), 0 1px 2px rgb(0 0 0 / 0.3);
+	--md-elev-2: 0 2px 6px rgb(0 240 255 / 0.10), 0 2px 4px rgb(0 0 0 / 0.3);
+	--md-elev-3: 0 4px 12px rgb(0 240 255 / 0.12), 0 2px 4px rgb(0 0 0 / 0.4);
+}

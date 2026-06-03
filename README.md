@@ -43,7 +43,7 @@
 - **Wails CLI** v2（`go install github.com/wailsapp/wails/v2/cmd/wails@latest`）
 - **Java** 8+（`make jre-download` 自动下载 Azul Zulu JRE 21）
 - **NSIS**（Windows 安装包构建需要，`https://nsis.sourceforge.io/Download`）
-- **Python 3**（JRE 自动下载解析 API 响应）
+- **GNU coreutils**（make jre-download 用到 `mktemp` / `grep -E`）
 
 ---
 

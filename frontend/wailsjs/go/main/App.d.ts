@@ -10,8 +10,16 @@ export function FetchDatabaseDataStreaming(arg1:string):Promise<string>;
 
 export function GetConnectionPassword(arg1:string):Promise<string>;
 
+export function GetThemeCSS(arg1:string):Promise<string>;
+
 export function IsDevMode():Promise<boolean>;
 
 export function ListConnections():Promise<Array<main.SavedConnection>>;
 
+export function ListThemes():Promise<Array<main.ThemeInfo>>;
+
+export function LoadSettings():Promise<main.AppSettings>;
+
 export function SaveConnection(arg1:main.SaveConnectionInput):Promise<main.SavedConnection>;
+
+export function SaveSettings(arg1:main.AppSettings):Promise<void>;

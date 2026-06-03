@@ -18,6 +18,10 @@ export function GetConnectionPassword(arg1) {
   return window['go']['main']['App']['GetConnectionPassword'](arg1);
 }
 
+export function GetThemeCSS(arg1) {
+  return window['go']['main']['App']['GetThemeCSS'](arg1);
+}
+
 export function IsDevMode() {
   return window['go']['main']['App']['IsDevMode']();
 }
@@ -26,6 +30,18 @@ export function ListConnections() {
   return window['go']['main']['App']['ListConnections']();
 }
 
+export function ListThemes() {
+  return window['go']['main']['App']['ListThemes']();
+}
+
+export function LoadSettings() {
+  return window['go']['main']['App']['LoadSettings']();
+}
+
 export function SaveConnection(arg1) {
   return window['go']['main']['App']['SaveConnection'](arg1);
+}
+
+export function SaveSettings(arg1) {
+  return window['go']['main']['App']['SaveSettings'](arg1);
 }

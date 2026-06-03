@@ -21,7 +21,15 @@
       "Bash(npm --prefix frontend run build)",
       "Bash(go doc *)",
       "Bash(wails version *)",
-      "Bash(wails generate *)"
+      "Bash(wails generate *)",
+      "WebFetch(domain:api.azul.com)",
+      "Bash(curl -sL \"https://api.azul.com/metadata/v1/zulu/packages/?java_version=21&os=windows&arch=x64&java_package_type=jre&archive_type=zip&latest=true&page_size=1\")",
+      "Bash(OS=Windows_NT make jre-download)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\)[0]; print\\('availability_type:', d.get\\('availability_type'\\)\\); print\\('download_url:', d.get\\('download_url'\\)\\)\")",
+      "Bash(python -c \"import json; d=json.load\\(open\\('/tmp/azu.json'\\)\\); r=d[0]; print\\('availability_type:', r.get\\('availability_type'\\)\\); print\\('latest:', r.get\\('latest'\\)\\); print\\('url:', r.get\\('download_url'\\)\\)\")",
+      "Bash(curl -sL \"https://api.azul.com/metadata/v1/zulu/packages/?java_version=21&os=windows&arch=x64&java_package_type=jre&archive_type=zip&latest=true&page_size=1\" -o /tmp/azu.json)",
+      "Read(//tmp/**)",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('/tmp/azu.json'\\)\\); r=d[0]; print\\('availability_type:', r.get\\('availability_type'\\)\\); print\\('latest:', r.get\\('latest'\\)\\); print\\('url:', r.get\\('download_url'\\)\\)\")"
     ]
   }
 }

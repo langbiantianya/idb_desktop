@@ -23,6 +23,11 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
+	// 首次启动：部署内置主题到 ~/.config/idb/theme/
+	if err := deployBundledThemes(); err != nil {
+		wruntime.LogWarningf(ctx, "deploy bundled themes failed: %v", err)
+	}
+
 	eng, err := StartEngine(ctx)
 	if err != nil {
 		wruntime.LogErrorf(ctx, "engine start failed: %v", err)
@@ -107,6 +112,28 @@ func (a *App) DeleteConnection(id string) error {
 // IsDevMode 暴露给前端判断当前是否为开发模式（wails dev）。
 func (a *App) IsDevMode() bool {
 	return isDevBuild()
+}
+
+// ---------- 主题管理 ----------
+
+// ListThemes 扫描 ~/.config/idb/theme/*.css 并返回主题列表。
+func (a *App) ListThemes() ([]ThemeInfo, error) {
+	return a.cfg.ListThemes()
+}
+
+// GetThemeCSS 读取指定主题的完整 CSS 内容。
+func (a *App) GetThemeCSS(id string) (string, error) {
+	return a.cfg.GetThemeCSS(id)
+}
+
+// LoadSettings 从 ~/.config/idb/settings.json 读取应用设置。
+func (a *App) LoadSettings() (AppSettings, error) {
+	return a.cfg.LoadSettings()
+}
+
+// SaveSettings 写入应用设置到 ~/.config/idb/settings.json。
+func (a *App) SaveSettings(input AppSettings) error {
+	return a.cfg.SaveSettings(input)
 }
 // 不引入 encoding/json 是为了避免在已有 envelope 字符串外再做一次完整序列化的开销。
 func escapeJSONString(s string) string {

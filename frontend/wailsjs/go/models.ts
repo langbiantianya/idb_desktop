@@ -1,5 +1,23 @@
 export namespace main {
 	
+	export class AppSettings {
+	    version: number;
+	    themeMode: string;
+	    lightThemeId: string;
+	    darkThemeId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.themeMode = source["themeMode"];
+	        this.lightThemeId = source["lightThemeId"];
+	        this.darkThemeId = source["darkThemeId"];
+	    }
+	}
 	export class SaveConnectionInput {
 	    id: string;
 	    name: string;
@@ -52,6 +70,22 @@ export namespace main {
 	        this.user = source["user"];
 	        this.database = source["database"];
 	        this.hasPassword = source["hasPassword"];
+	    }
+	}
+	export class ThemeInfo {
+	    id: string;
+	    name: string;
+	    type: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ThemeInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.type = source["type"];
 	    }
 	}
 

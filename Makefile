@@ -35,6 +35,43 @@ else
 endif
 
 # =============================================================================
+# Shell 探测（关键：Windows 上 GNU Make 的 $(shell ...) 与 recipe 都默认
+# 走 cmd.exe；cmd 不会自动补 .exe，且 cmd 的 PATH 可能不含 Git Bash 的
+# usr/bin/，导致 mkdir / grep / sed / mktemp / unzip 全部找不到。
+# 解决：在 parse 阶段解析出 bash.exe 的绝对路径，把 $(shell) 与 recipe
+# 都显式路由到这个 bash 上；不依赖调用 make 的 shell 的 PATH。
+# =============================================================================
+ifeq ($(HOST_OS),windows)
+  # 1) 看 cmd 当前 PATH
+  BASH_BIN := $(shell where bash.exe 2>/dev/null | head -1)
+  ifeq ($(BASH_BIN),)
+    BASH_BIN := $(shell where bash 2>/dev/null | head -1)
+  endif
+  # 2) 兜底：scoop git 安装路径
+  ifeq ($(BASH_BIN),)
+    BASH_BIN := $(firstword $(wildcard C:/Users/*/scoop/apps/git/*/usr/bin/bash.exe))
+  endif
+  # 3) 兜底：默认 Git for Windows 安装路径
+  ifeq ($(BASH_BIN),)
+    BASH_BIN := $(firstword $(wildcard C:/Program\ Files/Git/usr/bin/bash.exe))
+  endif
+  # 4) 兜底：msys2
+  ifeq ($(BASH_BIN),)
+    BASH_BIN := $(firstword $(wildcard C:/msys64/usr/bin/bash.exe))
+  endif
+  ifeq ($(BASH_BIN),)
+    $(error 未找到 bash.exe；请安装 Git for Windows (https://git-scm.com/download/win) 并重试)
+  endif
+  # 把 $(shell) 与 recipe 路由到这个 bash。
+  # 在 bash 内部通过 export PATH=... 加入 Git Bash bin 目录，
+  # 确保 mkdir / grep / sed / mktemp / unzip / tar / head / cp 一应俱全。
+  SHELL := $(BASH_BIN)
+  SHELLFLAGS := -lc
+else
+  SHELL := /bin/sh
+endif
+
+# =============================================================================
 # 开发
 # =============================================================================
 
@@ -78,26 +115,22 @@ frontend-build:
 .PHONY: jre-download
 jre-download: $(JRE_DIR)/bin/java$(if $(filter windows,$(HOST_OS)),.exe)
 
-# Azul API 查询辅助宏：从 JSON 响应提取 download_url
-#   API 端点: https://api.azul.com/metadata/v1/zulu/packages/?java_version=21&os={os}&arch=x64&java_package_type=jre&archive_type={ext}&latest=true&page_size=1
-#   响应: [{"download_url":"https://cdn.azul.com/zulu/bin/zulu21.xx-ca-jre21.x.x-{os}_x64.{ext}", ...}]
-AZUL_QUERY = $(shell curl -sL "$(AZUL_API)?java_version=$(JAVA_VERSION)&arch=x64&java_package_type=jre&latest=true&page_size=1&os=$(1)&archive_type=$(2)" | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['download_url'])" 2>/dev/null || curl -sL "$(AZUL_API)?java_version=$(JAVA_VERSION)&arch=x64&java_package_type=jre&latest=true&page_size=1&os=$(1)&archive_type=$(2)" | python -c "import sys,json; print(json.load(sys.stdin)[0]['download_url'])")
+# 在 $(shell) 中通过 bash 抽 download_url，避免依赖 Windows 上未必存在的 python，
+# 也避免被 cmd.exe 的 PATH 解析和 .exe 补全机制坑。
+# page_size=5 + grep -v '\-fx\-' 排除 JavaFX 变体，只取纯 JRE。
+ifeq ($(HOST_OS),windows)
+  AZUL_QUERY = $(shell "$(BASH_BIN)" -lc 'curl -fsSL "$(AZUL_API)?java_version=$(JAVA_VERSION)&arch=x64&java_package_type=jre&latest=true&page_size=5&os=$(1)&archive_type=$(2)" 2>/dev/null | grep -oE "\"download_url\"[[:space:]]*:[[:space:]]*\"[^\"]+\"" | grep -v "\-fx\-" | head -1 | sed -E "s/.*\"([^\"]+)\"$$/\1/"')
+else
+  AZUL_QUERY = $(shell curl -fsSL "$(AZUL_API)?java_version=$(JAVA_VERSION)&arch=x64&java_package_type=jre&latest=true&page_size=5&os=$(1)&archive_type=$(2)" 2>/dev/null | grep -oE '"download_url"[[:space:]]*:[[:space:]]*"[^"]+"' | grep -v '\-fx\-' | head -1 | sed -E 's/.*"([^"]+)"$$/\1/')
+endif
 
 ifeq ($(HOST_OS),windows)
 $(JRE_DIR)/bin/java.exe:
 	@echo "=== 下载 Azul Zulu JRE $(JAVA_VERSION) (windows x64) ==="
-	@mkdir -p $(JRE_DIR)
 	$(eval JRE_URL := $(call AZUL_QUERY,windows,zip))
 	@if [ -z "$(JRE_URL)" ]; then echo "错误: 无法从 Azul API 获取下载链接"; exit 1; fi
 	@echo "下载: $(JRE_URL)"
-	curl -L -o /tmp/idb-jre.zip "$(JRE_URL)"
-	@echo "解压到 $(JRE_DIR) ..."
-	$(eval EXTRACTED_DIR := $(shell unzip -l /tmp/idb-jre.zip | head -5 | grep '/' | head -1 | awk '{print $$4}' | cut -d/ -f1))
-	unzip -qo /tmp/idb-jre.zip -d /tmp/idb-jre-extract
-	rm -rf $(JRE_DIR)/*
-	cp -r /tmp/idb-jre-extract/$(EXTRACTED_DIR)/* $(JRE_DIR)/
-	rm -rf /tmp/idb-jre.zip /tmp/idb-jre-extract
-	@echo "=== Zulu JRE 已安装到 $(JRE_DIR) ==="
+	@"$(BASH_BIN)" -lc 'set -e; export PATH="$$(dirname "$(BASH_BIN)"):$$PATH"; mkdir -p "$(JRE_DIR)"; JRE_TMP_DIR=$$(mktemp -d); curl -fsSL -o "$$JRE_TMP_DIR/idb-jre.zip" "$(JRE_URL)"; echo "解压到 $(JRE_DIR) ..."; rm -rf "$(JRE_DIR)"/*; unzip -qo "$$JRE_TMP_DIR/idb-jre.zip" -d "$$JRE_TMP_DIR/extracted"; EXTRACTED_DIR=$$(ls "$$JRE_TMP_DIR/extracted" | head -1); if [ -z "$$EXTRACTED_DIR" ] || [ ! -d "$$JRE_TMP_DIR/extracted/$$EXTRACTED_DIR" ]; then echo "错误: 无法识别解压后的顶层目录"; rm -rf "$$JRE_TMP_DIR"; exit 1; fi; cp -r "$$JRE_TMP_DIR/extracted/$$EXTRACTED_DIR/." "$(JRE_DIR)/"; rm -rf "$$JRE_TMP_DIR"; chmod +x "$(JRE_DIR)/bin/java.exe" 2>/dev/null || true; echo "=== Zulu JRE 已安装到 $(JRE_DIR) ==="'
 else
 $(JRE_DIR)/bin/java:
 	@echo "=== 下载 Azul Zulu JRE $(JAVA_VERSION) (linux x64) ==="
@@ -105,13 +138,16 @@ $(JRE_DIR)/bin/java:
 	$(eval JRE_URL := $(call AZUL_QUERY,linux,tar.gz))
 	@if [ -z "$(JRE_URL)" ]; then echo "错误: 无法从 Azul API 获取下载链接"; exit 1; fi
 	@echo "下载: $(JRE_URL)"
-	curl -L -o /tmp/idb-jre.tar.gz "$(JRE_URL)"
-	@echo "解压到 $(JRE_DIR) ..."
-	$(eval EXTRACTED_DIR := $(shell tar tzf /tmp/idb-jre.tar.gz | head -1 | cut -d/ -f1))
-	tar xzf /tmp/idb-jre.tar.gz -C /tmp/
-	rm -rf $(JRE_DIR)/*
-	cp -r /tmp/$(EXTRACTED_DIR)/* $(JRE_DIR)/
-	rm -rf /tmp/idb-jre.tar.gz /tmp/$(EXTRACTED_DIR)
+	@JRE_TMP_DIR=$$(mktemp -d) && \
+	  curl -fsSL -o "$$JRE_TMP_DIR/idb-jre.tar.gz" "$(JRE_URL)" && \
+	  echo "解压到 $(JRE_DIR) ..." && \
+	  rm -rf $(JRE_DIR)/* && \
+	  tar xzf "$$JRE_TMP_DIR/idb-jre.tar.gz" -C "$$JRE_TMP_DIR" && \
+	  EXTRACTED_DIR=$$(ls "$$JRE_TMP_DIR" | head -1) && \
+	  if [ -z "$$EXTRACTED_DIR" ] || [ ! -d "$$JRE_TMP_DIR/$$EXTRACTED_DIR" ]; then echo "错误: 无法识别解压后的顶层目录"; rm -rf "$$JRE_TMP_DIR"; exit 1; fi && \
+	  cp -r "$$JRE_TMP_DIR/$$EXTRACTED_DIR/." $(JRE_DIR)/ && \
+	  rm -rf "$$JRE_TMP_DIR" && \
+	  chmod +x $(JRE_DIR)/bin/java
 	@echo "=== Zulu JRE 已安装到 $(JRE_DIR) ==="
 endif
 
