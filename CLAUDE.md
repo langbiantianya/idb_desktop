@@ -21,6 +21,8 @@ idb_desktop/
 ├── app_dev.go                   # dev build tag: isDevBuild() = true
 ├── app_prod.go                  # production build tag: isDevBuild() = false
 ├── config.go                    # 连接配置持久化（~/.config/idb/connections.json）
+├── settings.go                  # 应用设置持久化（~/.config/idb/settings.json：语言/主题/引导状态）
+├── theme.go                     # 主题文件扫描/读取/部署（~/.config/idb/theme/*.css + 内置嵌入）
 ├── crypto_windows.go            # Windows DPAPI 密码加密
 ├── crypto_other.go              # 非 Windows 平台 AES-256-GCM 密码加密
 ├── engine.go                    # JVM 子进程生命周期 + 异步并发管道协议（含流式响应）
@@ -36,6 +38,8 @@ idb_desktop/
 │   │   ├── libs/                 # 引擎运行时依赖（HikariCP、kotlinx-serialization、logback、SLF4J 等）
 │   │   └── drivers/              # JDBC 驱动（mysql-connector-j、postgresql）
 │   └── jre/                      # Azul Zulu JRE 21（make jre-download 自动下载）
+├── themes/                        # 内置主题（go:embed 嵌入，首次启动部署到 ~/.config/idb/theme/）
+│   └── cyberpunk-dark.css         # 赛博朋克深色主题
 ├── scripts/
 │   └── package-linux.sh         # Linux 打包脚本（tar.gz + run.sh 启动器）
 ├── frontend/
@@ -48,7 +52,15 @@ idb_desktop/
 │   │   │   ├── api/             # 引擎通信 API 层（含流式调用）
 │   │   │   │   ├── index.js     # 统一请求封装（invoke + invokeStreaming）
 │   │   │   │   ├── connections.js # 连接管理 API（List/Get/Save/Delete）
+│   │   │   │   ├── themes.js    # 主题与应用设置 API（ListThemes/GetThemeCSS/LoadSettings/SaveSettings）
 │   │   │   │   └── normalize.js   # 响应数据归一化工具
+│   │   │   ├── i18n/            # 多语言支持（5 种语言）
+│   │   │   │   ├── index.js     # locale store + t() 翻译函数 + 语言检测
+│   │   │   │   ├── zh-CN.js     # 简体中文
+│   │   │   │   ├── zh-TW.js     # 繁体中文
+│   │   │   │   ├── en.js        # English
+│   │   │   │   ├── ja.js        # 日本語
+│   │   │   │   └── ru.js        # Русский
 │   │   │   ├── components/      # 15 个 Svelte 组件
 │   │   │   │   ├── ConnectionForm.svelte  # 连接管理界面
 │   │   │   │   ├── Sidebar.svelte         # 数据库树形浏览器
@@ -67,7 +79,7 @@ idb_desktop/
 │   │   │   │   └── ToastHost.svelte       # Toast 通知容器
 │   │   │   ├── stores/          # Svelte 状态管理
 │   │   │   │   ├── appState.js  # 活跃连接状态
-│   │   │   │   ├── themeStore.js # 主题偏好（持久化到 localStorage）
+│   │   │   │   ├── themeStore.js # 主题偏好 + 自定义主题注入 + 设置持久化（Go 后端）
 │   │   │   │   └── toasts.js    # Toast 通知队列
 │   │   │   ├── monaco/setup.js  # Monaco Worker 初始化
 │   │   │   ├── readonly.js      # 只读系统库保护（MySQL 系统 schema + 写关键字检测）
@@ -78,8 +90,12 @@ idb_desktop/
 │   │   │   └── index.js         # lib 顶层 barrel 导出（轻量）
 │   │   └── routes/
 │   │       ├── +layout.js       # prerender = true
-│   │       ├── +layout.svelte   # 全局布局（主题初始化 + 右键策略 + ToastHost）
+│   │       ├── +layout.svelte   # 全局布局（主题初始化 + 引导检测 + 右键策略 + ToastHost）
 │   │       ├── +page.svelte     # 连接选择页（路由 /）
+│   │       ├── setup/
+│   │       │   └── +page.svelte # 首次引导页（路由 /setup：语言选择 + 主题选择）
+│   │       ├── settings/
+│   │       │   └── +page.svelte # 设置页（路由 /settings：语言/主题模式/自定义主题）
 │   │       ├── workspace/
 │   │       │   └── +page.svelte # 数据库工作台（路由 /workspace）
 │   │       └── layout.css       # MD3 设计令牌 + Tailwind 4 @theme 注入
@@ -350,16 +366,23 @@ compilerOptions: {
 
 ### 8.4 状态中心
 
-已实现三个 Svelte Store（位于 `src/lib/stores/`）：
+已实现三个 Svelte Store（位于 `src/lib/stores/`）+ i18n locale store：
 
 ```js
 // appState.js — 活跃数据库连接
 export const defaultConnection = { driver: 'Mysql', host: '127.0.0.1', port: 3306, user: 'root' }
 export const activeConnection = writable(null) // ConnectionConfig | null
 
-// themeStore.js — 主题偏好（light / dark / auto），持久化到 localStorage
-export const themeMode = writable(load())    // 'light' | 'dark' | 'auto'
-export const resolvedTheme = derived(...)    // 实际应用的 'light' | 'dark'
+// themeStore.js — 主题偏好 + 自定义主题 + 设置持久化（Go 后端）
+export const themeMode = writable('auto')       // 'light' | 'dark' | 'auto'
+export const resolvedTheme = writable('light')  // 实际应用的 'light' | 'dark'
+export const lightThemeId = writable('')        // 浅色自定义主题 ID（空 = 内置 MD3）
+export const darkThemeId = writable('')         // 深色自定义主题 ID（空 = 内置 MD3）
+export const setupComplete = writable(false)    // 首次引导是否已完成
+
+// i18n/index.js — 多语言
+export const locale = writable('zh-CN')         // 'zh-CN' | 'zh-TW' | 'en' | 'ja' | 'ru'
+export const t = derived(locale, ...)           // 翻译函数：$t('key') 或 $t('key', { param })
 
 // toasts.js — Toast 通知队列，自动 3.5s 移除
 export const toasts = writable([])
@@ -368,10 +391,11 @@ export function err(text) { pushToast('error', text) }
 ```
 
 > 所有写入引擎的请求从 `activeConnection` 取出 `connection` 字段，前端 API 层（`src/lib/api/index.js`）自动完成拼装。
+> 设置（语言/主题/引导状态）通过 `themeStore.js` 的 `persistSettings()` 写回 Go 后端 `~/.config/idb/settings.json`。
 
 ### 8.5 Wails JS 绑定
 
-`frontend/wailsjs/go/main/App.js` 由 Wails 自动生成，当前暴露 7 个方法：
+`frontend/wailsjs/go/main/App.js` 由 Wails 自动生成，当前暴露 11 个方法：
 
 | 方法 | 用途 |
 |---|---|
@@ -382,6 +406,10 @@ export function err(text) { pushToast('error', text) }
 | `GetConnectionPassword(id)` | 解密并返回指定连接的密码 |
 | `SaveConnection(input)` | 创建/更新连接配置（密码自动加密） |
 | `DeleteConnection(id)` | 删除连接配置 |
+| `ListThemes()` | 扫描 `~/.config/idb/theme/*.css`，返回主题列表 |
+| `GetThemeCSS(id)` | 读取指定主题的完整 CSS 内容 |
+| `LoadSettings()` | 从 `~/.config/idb/settings.json` 读取应用设置 |
+| `SaveSettings(input)` | 写入应用设置（语言/主题/引导状态） |
 
 新增 Go 方法后会自动刷新。**不要手工编辑 `wailsjs/` 内任何文件**。
 
@@ -492,9 +520,14 @@ cd frontend && npm run lint
 | 表结构编辑 | ✅ Draft 模式列编辑器（ADD / MODIFY / DROP COLUMN）+ 新建表向导 + 字段改名（newName）+ GET_DDL |
 | 用户与权限管理 | ✅ 用户列表 + GRANT/REVOKE 模态框 |
 | WHERE / ORDER BY 安全 | ✅ 前端 `sqlValidate.js` 方言级校验 + 引擎侧二次校验 |
-| MD3 Token / Tailwind theme | ✅ 完整 MD3 令牌注入 + 亮色/暗色/自动主题 |
+| MD3 Token / Tailwind theme | ✅ 完整 MD3 令牌注入 + 亮色/暗色/自动主题 + 自定义主题加载（`~/.config/idb/theme/*.css`） |
 | 上下文菜单 / Toast 通知 | ✅ 右键菜单（dev 模式可用原生菜单） + Toast |
 | 只读系统库保护 | ✅ MySQL 系统 schema 写操作拦截 + 写关键字检测 |
+| 多语言（i18n） | ✅ 5 种语言（zh-CN / zh-TW / en / ja / ru），`$t('key')` 翻译函数，220+ 翻译 key |
+| 自定义主题 | ✅ 从 `~/.config/idb/theme/*.css` 加载，支持亮色/暗色分别指定，内置赛博朋克主题 |
+| 首次引导页 | ✅ `/setup` 路由：语言选择（下拉预览）→ 主题模式选择，MD3 动画过渡 |
+| 设置页 | ✅ `/settings` 路由：语言切换、主题模式、自定义主题选择、主题文件格式说明 |
+| 设置持久化 | ✅ `~/.config/idb/settings.json`：语言/主题/引导状态，Go 后端 atomic-rename |
 | NSIS 安装包 | ✅ Windows 安装包（含 engine 打包 + 快捷方式选项） |
 | Linux 分发包 | ✅ tar.gz + run.sh 启动器 |
 | Makefile 自动化 | ✅ 双平台构建 + Azul Zulu JRE 21 自动下载 + deps 依赖自检 |

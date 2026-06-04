@@ -21,6 +21,7 @@ import {
  * @property {string} lightThemeId - 空串 = 内置 MD3
  * @property {string} darkThemeId  - 空串 = 内置 MD3
  * @property {string} locale - 'zh-CN' | 'zh-TW' | 'en' | 'ja' | 'ru'
+ * @property {boolean} setupComplete - 首次引导已完成
  */
 
 /** @returns {Promise<ThemeInfo[]>} */
@@ -66,5 +67,5 @@ export async function saveSettings(settings) {
 
 /** @returns {AppSettings} */
 function defaultSettings() {
-	return { version: 1, themeMode: 'auto', lightThemeId: '', darkThemeId: '' };
+	return { version: 1, themeMode: 'auto', lightThemeId: '', darkThemeId: '', locale: '', setupComplete: false };
 }

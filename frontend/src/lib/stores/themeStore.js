@@ -32,6 +32,9 @@ export const darkThemeId = writable('');
 /** 是否已完成从 Go 加载设置（用于 UI 判断是否可以渲染主题选择器）。 */
 export const settingsLoaded = writable(false);
 
+/** 首次引导是否已完成。 */
+export const setupComplete = writable(false);
+
 // --- 自定义 CSS 注入 ---
 
 let currentInjectedId = '';
@@ -141,8 +144,15 @@ function persistSettings() {
 		themeMode: get(themeMode),
 		lightThemeId: get(lightThemeId),
 		darkThemeId: get(darkThemeId),
-		locale: get(locale)
+		locale: get(locale),
+		setupComplete: get(setupComplete)
 	});
+}
+
+/** 标记引导完成并持久化。 */
+export function completeSetup() {
+	setupComplete.set(true);
+	persistSettings();
 }
 
 /**
@@ -166,6 +176,7 @@ export async function initTheme() {
 		} else {
 			locale.set(readInitialLocale());
 		}
+		setupComplete.set(settings.setupComplete ?? false);
 		// 兼容：同步写回 localStorage
 		localStorage.setItem(STORAGE_KEY, get(themeMode));
 	} catch {

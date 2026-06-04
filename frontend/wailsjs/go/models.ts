@@ -2,10 +2,11 @@ export namespace main {
 	
 	export class AppSettings {
 	    version: number;
+	    locale: string;
+	    setupComplete: boolean;
 	    themeMode: string;
 	    lightThemeId: string;
 	    darkThemeId: string;
-	    locale: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -14,10 +15,11 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.version = source["version"];
+	        this.locale = source["locale"];
+	        this.setupComplete = source["setupComplete"];
 	        this.themeMode = source["themeMode"];
 	        this.lightThemeId = source["lightThemeId"];
 	        this.darkThemeId = source["darkThemeId"];
-	        this.locale = source["locale"];
 	    }
 	}
 	export class SaveConnectionInput {
