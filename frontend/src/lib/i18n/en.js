@@ -272,4 +272,30 @@ export const en = {
 	'theme.light': 'Light',
 	'theme.auto': 'Follow system',
 	'theme.dark': 'Dark',
+
+	// ---- Performance ----
+	'perf.title': 'Performance',
+	'perf.mem_refresh': 'Memory refresh interval',
+	'perf.seconds': '{n} seconds',
+
+	// ---- System Info ----
+	'sysinfo.title': 'System Information',
+	'sysinfo.loading': 'Loading system information…',
+	'sysinfo.error': 'Failed to load system information',
+	'sysinfo.jvm': 'JVM Information',
+	'sysinfo.jvm_version': 'Version',
+	'sysinfo.jvm_vendor': 'Vendor',
+	'sysinfo.jvm_name': 'Virtual Machine',
+	'sysinfo.os': 'Operating System',
+	'sysinfo.os_name': 'System',
+	'sysinfo.os_arch': 'Architecture',
+	'sysinfo.os_version': 'Version',
+	'sysinfo.cpu': 'CPU Cores',
+	'sysinfo.memory': 'Memory Usage',
+	'sysinfo.mem_max': 'Max Available',
+	'sysinfo.mem_allocated': 'Allocated',
+	'sysinfo.mem_used': 'Used',
+	'sysinfo.mem_free': 'Free',
+	'sysinfo.uptime': 'Uptime',
+	'sysinfo.pid': 'Process ID',
 };

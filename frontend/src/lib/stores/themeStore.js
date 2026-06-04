@@ -35,6 +35,9 @@ export const settingsLoaded = writable(false);
 /** 首次引导是否已完成。 */
 export const setupComplete = writable(false);
 
+/** 内存刷新间隔（秒）。 */
+export const memRefreshSeconds = writable(10);
+
 // --- 自定义 CSS 注入 ---
 
 let currentInjectedId = '';
@@ -145,13 +148,20 @@ function persistSettings() {
 		lightThemeId: get(lightThemeId),
 		darkThemeId: get(darkThemeId),
 		locale: get(locale),
-		setupComplete: get(setupComplete)
+		setupComplete: get(setupComplete),
+		memRefreshSeconds: get(memRefreshSeconds)
 	});
 }
 
 /** 标记引导完成并持久化。 */
 export function completeSetup() {
 	setupComplete.set(true);
+	persistSettings();
+}
+
+/** 设置内存刷新间隔并持久化。 @param {number} seconds */
+export function setMemRefresh(seconds) {
+	memRefreshSeconds.set(seconds);
 	persistSettings();
 }
 
@@ -177,6 +187,7 @@ export async function initTheme() {
 			locale.set(readInitialLocale());
 		}
 		setupComplete.set(settings.setupComplete ?? false);
+		memRefreshSeconds.set(settings.memRefreshSeconds ?? 10);
 		// 兼容：同步写回 localStorage
 		localStorage.setItem(STORAGE_KEY, get(themeMode));
 	} catch {

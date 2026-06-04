@@ -272,4 +272,30 @@ export const ru = {
 	'theme.light': 'Светлая',
 	'theme.auto': 'Следовать системе',
 	'theme.dark': 'Тёмная',
+
+	// ---- Настройки производительности ----
+	'perf.title': 'Производительность',
+	'perf.mem_refresh': 'Интервал обновления памяти',
+	'perf.seconds': '{n} сек',
+
+	// ---- Информация о системе ----
+	'sysinfo.title': 'Информация о системе',
+	'sysinfo.loading': 'Загрузка информации о системе…',
+	'sysinfo.error': 'Не удалось загрузить информацию о системе',
+	'sysinfo.jvm': 'Информация JVM',
+	'sysinfo.jvm_version': 'Версия',
+	'sysinfo.jvm_vendor': 'Производитель',
+	'sysinfo.jvm_name': 'Виртуальная машина',
+	'sysinfo.os': 'Операционная система',
+	'sysinfo.os_name': 'Система',
+	'sysinfo.os_arch': 'Архитектура',
+	'sysinfo.os_version': 'Версия',
+	'sysinfo.cpu': 'Ядра CPU',
+	'sysinfo.memory': 'Использование памяти',
+	'sysinfo.mem_max': 'Максимум доступно',
+	'sysinfo.mem_allocated': 'Выделено',
+	'sysinfo.mem_used': 'Использовано',
+	'sysinfo.mem_free': 'Свободно',
+	'sysinfo.uptime': 'Время работы',
+	'sysinfo.pid': 'ID процесса',
 };

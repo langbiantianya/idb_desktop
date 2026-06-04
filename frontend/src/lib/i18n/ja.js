@@ -272,4 +272,30 @@ export const ja = {
 	'theme.light': 'ライト',
 	'theme.auto': 'システムに従う',
 	'theme.dark': 'ダーク',
+
+	// ---- パフォーマンス設定 ----
+	'perf.title': 'パフォーマンス',
+	'perf.mem_refresh': 'メモリ更新間隔',
+	'perf.seconds': '{n} 秒',
+
+	// ---- システム情報 ----
+	'sysinfo.title': 'システム情報',
+	'sysinfo.loading': 'システム情報を読み込み中…',
+	'sysinfo.error': 'システム情報の取得に失敗しました',
+	'sysinfo.jvm': 'JVM 情報',
+	'sysinfo.jvm_version': 'バージョン',
+	'sysinfo.jvm_vendor': 'ベンダー',
+	'sysinfo.jvm_name': '仮想マシン',
+	'sysinfo.os': 'オペレーティングシステム',
+	'sysinfo.os_name': 'システム',
+	'sysinfo.os_arch': 'アーキテクチャ',
+	'sysinfo.os_version': 'バージョン',
+	'sysinfo.cpu': 'CPU コア数',
+	'sysinfo.memory': 'メモリ使用量',
+	'sysinfo.mem_max': '最大使用可能量',
+	'sysinfo.mem_allocated': '割り当て済み',
+	'sysinfo.mem_used': '使用中',
+	'sysinfo.mem_free': '空き',
+	'sysinfo.uptime': '稼働時間',
+	'sysinfo.pid': 'プロセス ID',
 };

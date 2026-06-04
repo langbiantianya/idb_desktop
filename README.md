@@ -19,7 +19,8 @@
 - **多语言** — 简体中文 / 繁体中文 / English / 日本語 / Русский 五种语言，首次启动引导选择
 - **只读保护** — MySQL 系统 Schema（sys, performance_schema, mysql, information_schema）自动拦截写操作 + 写关键字检测
 - **首次引导** — 首次启动自动进入引导页（`/setup`），选择语言和主题模式
-- **设置页** — 独立设置页面（`/settings`），管理语言、主题模式、自定义主题
+- **设置页** — 独立设置页面（`/settings`），管理语言、主题模式、自定义主题、内存刷新频率、系统信息展示
+- **系统信息** — 设置页展示 JVM/OS/CPU/内存详情，workspace 底部实时内存占用条（可配置 1-10s 刷新频率）
 - **双路由设计** — 连接选择页（`/`）与数据库工作台（`/workspace`）分离
 - **WHERE / ORDER BY 双重校验** — 前端方言级禁止关键字扫描 + 引擎侧二次校验
 
@@ -130,9 +131,9 @@ idb_desktop/
 │       └── routes/
 │           ├── +page.svelte        # 连接选择页
 │           ├── setup/
-│           │   └── +page.svelte    # 首次引导页（语言 + 主题选择）
+│           │   └── +page.svelte    # 首次引导页（语言选择 + 主题选择，MD3 动画）
 │           ├── settings/
-│           │   └── +page.svelte    # 设置页（语言/主题/自定义主题）
+│           │   └── +page.svelte    # 设置页（语言/主题/性能/系统信息）
 │           └── workspace/
 │               └── +page.svelte    # 数据库工作台
 └── build/                  # 构建资源（NSIS、manifest、icon）

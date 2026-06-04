@@ -9,12 +9,13 @@ import (
 // AppSettings 存储在 ~/.config/idb/settings.json。
 // 包含全局应用偏好：语言、首次引导状态、主题选择。
 type AppSettings struct {
-	Version       int    `json:"version"`
-	Locale        string `json:"locale"`        // "zh-CN" | "zh-TW" | "en" | "ja" | "ru"
-	SetupComplete bool   `json:"setupComplete"` // 首次引导已完成
-	ThemeMode     string `json:"themeMode"`     // "light" | "dark" | "auto"
-	LightThemeID  string `json:"lightThemeId"`  // 浅色模式主题 ID，空 = 内置 MD3
-	DarkThemeID   string `json:"darkThemeId"`   // 深色模式主题 ID，空 = 内置 MD3
+	Version           int    `json:"version"`
+	Locale            string `json:"locale"`            // "zh-CN" | "zh-TW" | "en" | "ja" | "ru"
+	SetupComplete     bool   `json:"setupComplete"`     // 首次引导已完成
+	ThemeMode         string `json:"themeMode"`         // "light" | "dark" | "auto"
+	LightThemeID      string `json:"lightThemeId"`      // 浅色模式主题 ID，空 = 内置 MD3
+	DarkThemeID       string `json:"darkThemeId"`       // 深色模式主题 ID，空 = 内置 MD3
+	MemRefreshSeconds int    `json:"memRefreshSeconds"` // 内存刷新间隔（秒），默认 10
 }
 
 const settingsFileName = "settings.json"
@@ -53,6 +54,9 @@ func (s *configStore) LoadSettings() (AppSettings, error) {
 	}
 	if settings.ThemeMode == "" {
 		settings.ThemeMode = "auto"
+	}
+	if settings.MemRefreshSeconds < 1 || settings.MemRefreshSeconds > 60 {
+		settings.MemRefreshSeconds = 10
 	}
 	return settings, nil
 }

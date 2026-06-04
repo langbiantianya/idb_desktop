@@ -319,6 +319,20 @@ export const deleteRow = (connection, tableName, where) =>
 /** @param {ConnectionConfig} connection @param {string} sql */
 export const executeSql = (connection, sql) => invoke('SQL', 'EXECUTE', connection, { sql });
 
+// -------- SYSTEM --------
+
+/**
+ * 获取 JVM 运行时系统信息（无需数据库连接，connection 字段仍需传递）。
+ * @returns {Promise<Response>}
+ */
+export function getSystemInfo() {
+	// SYSTEM/INFO 不需要真实连接，传一个空壳即可
+	const dummyConn = /** @type {ConnectionConfig} */ ({
+		driver: 'Mysql', host: '', port: 0, user: '', password: '', database: ''
+	});
+	return invoke('SYSTEM', 'INFO', dummyConn);
+}
+
 // -------- Streaming --------
 
 /**

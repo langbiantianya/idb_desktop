@@ -10,6 +10,8 @@
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { t } from '$lib/i18n';
 	import { get } from 'svelte/store';
+	import { getSystemInfo } from '$lib/api';
+	import { memRefreshSeconds } from '$lib/stores/themeStore.js';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
@@ -39,6 +41,30 @@
 
 	/** @type {Sidebar | null} */
 	let sidebarRef = $state(null);
+
+	// JVM 内存信息（按设置的间隔刷新）
+	let memUsed = $state(0);
+	let memTotal = $state(0);
+
+	$effect(() => {
+		const interval = $memRefreshSeconds * 1000;
+		function fetchMem() {
+			getSystemInfo().then((resp) => {
+				if (resp.success && resp.data) {
+					const m = /** @type {{ used: number; total: number }} */ (resp.data.memory);
+					memUsed = m.used;
+					memTotal = m.total;
+				}
+			}).catch(() => {});
+		}
+		fetchMem();
+		const timer = setInterval(fetchMem, interval);
+		return () => clearInterval(timer);
+	});
+
+	function formatMB(/** @type {number} */ bytes) {
+		return (bytes / 1024 / 1024).toFixed(0);
+	}
 
 	// 初始化：从 store 读取连接，无连接则跳回首页
 	$effect(() => {
@@ -320,6 +346,19 @@
 			</div>
 		</main>
 	</div>
+
+	<!-- 底部状态栏：JVM 内存 -->
+	<footer
+		class="flex shrink-0 items-center justify-end gap-3 px-3 py-1 text-[11px]"
+		style="background: var(--md-surface-container-low); border-top: 1px solid var(--md-outline-variant); color: var(--md-on-surface-variant);"
+	>
+		{#if memTotal > 0}
+			<span>JVM {formatMB(memUsed)} / {formatMB(memTotal)} MB</span>
+			<div class="h-1.5 w-24 overflow-hidden rounded-full" style="background: var(--md-surface-container-highest);">
+				<div class="h-full rounded-full" style="width: {Math.round(memUsed / memTotal * 100)}%; background: var(--md-primary);"></div>
+			</div>
+		{/if}
+	</footer>
 </div>
 
 <!-- 修改表结构弹窗（draft + 保存批量提交） -->

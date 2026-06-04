@@ -5,11 +5,14 @@
 		lightThemeId,
 		darkThemeId,
 		resolvedTheme,
+		memRefreshSeconds,
 		setTheme,
 		setLightTheme,
-		setDarkTheme
+		setDarkTheme,
+		setMemRefresh
 	} from '$lib/stores/themeStore.js';
 	import { listThemes } from '$lib/api/themes.js';
+	import { getSystemInfo } from '$lib/api';
 	import { t, locale, setLocale, locales } from '$lib/i18n';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 
@@ -17,10 +20,26 @@
 	let themes = $state([]);
 	let loading = $state(true);
 
+	/** @type {Record<string, unknown> | null} */
+	let sysInfo = $state(null);
+	let sysLoading = $state(true);
+	let sysError = $state(false);
+
 	$effect(() => {
 		listThemes().then((t) => {
 			themes = t;
 			loading = false;
+		});
+		getSystemInfo().then((resp) => {
+			if (resp.success && resp.data) {
+				sysInfo = /** @type {Record<string, unknown>} */ (resp.data);
+			} else {
+				sysError = true;
+			}
+			sysLoading = false;
+		}).catch(() => {
+			sysError = true;
+			sysLoading = false;
 		});
 	});
 
@@ -33,6 +52,24 @@
 		} else {
 			goto('/');
 		}
+	}
+
+	/** @param {number} bytes */
+	function formatBytes(bytes) {
+		if (bytes < 1024) return bytes + ' B';
+		if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+		if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+		return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+	}
+
+	/** @param {number} ms */
+	function formatUptime(ms) {
+		const s = Math.floor(ms / 1000);
+		if (s < 60) return s + 's';
+		const m = Math.floor(s / 60);
+		if (m < 60) return m + 'min ' + (s % 60) + 's';
+		const h = Math.floor(m / 60);
+		return h + 'h ' + (m % 60) + 'min';
 	}
 </script>
 
@@ -133,6 +170,23 @@
 				{/if}
 			</section>
 
+			<!-- 性能设置 -->
+			<section class="space-y-3">
+				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">{$t('perf.title')}</h2>
+				<div class="space-y-1">
+					<label class="text-xs" style="color: var(--md-on-surface-variant);">{$t('perf.mem_refresh')}</label>
+					<select
+						class="md-input w-full text-sm"
+						value={$memRefreshSeconds}
+						onchange={(e) => setMemRefresh(Number(e.currentTarget.value))}
+					>
+						{#each [1, 2, 3, 5, 10] as s (s)}
+							<option value={s}>{$t('perf.seconds', { n: s })}</option>
+						{/each}
+					</select>
+				</div>
+			</section>
+
 			<!-- 主题文件说明 -->
 			<section
 				class="rounded-lg p-4 text-xs leading-relaxed"
@@ -156,6 +210,68 @@
 					<code class="font-mono text-[11px]">type</code> {$t('settings.type_hint')}
 					{$t('settings.vars_hint')}
 				</p>
+			</section>
+
+			<!-- 系统信息 -->
+			<section class="space-y-3">
+				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">{$t('sysinfo.title')}</h2>
+				{#if sysLoading}
+					<p class="text-xs animate-pulse" style="color: var(--md-on-surface-variant);">{$t('sysinfo.loading')}</p>
+				{:else if sysError}
+					<p class="text-xs" style="color: var(--md-error);">{$t('sysinfo.error')}</p>
+				{:else if sysInfo}
+					{@const mem = /** @type {Record<string, number>} */ (sysInfo.memory)}
+					<div class="grid grid-cols-2 gap-3 text-xs">
+						<!-- JVM -->
+						<div class="col-span-2 rounded-lg p-3" style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);">
+							<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">{$t('sysinfo.jvm')}</h3>
+							<div class="space-y-1" style="color: var(--md-on-surface-variant);">
+								<p>{$t('sysinfo.jvm_version')}: <span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.jvmVersion}</span></p>
+								<p>{$t('sysinfo.jvm_vendor')}: <span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.jvmVendor}</span></p>
+								<p>{$t('sysinfo.jvm_name')}: <span class="font-mono text-[11px]" style="color: var(--md-on-surface);">{sysInfo.jvmName}</span></p>
+							</div>
+						</div>
+
+						<!-- 操作系统 -->
+						<div class="rounded-lg p-3" style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);">
+							<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">{$t('sysinfo.os')}</h3>
+							<div class="space-y-1" style="color: var(--md-on-surface-variant);">
+								<p>{$t('sysinfo.os_name')}: <span style="color: var(--md-on-surface);">{sysInfo.osName}</span></p>
+								<p>{$t('sysinfo.os_arch')}: <span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.osArch}</span></p>
+								<p>{$t('sysinfo.os_version')}: <span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.osVersion}</span></p>
+							</div>
+						</div>
+
+						<!-- CPU + PID + 运行时间 -->
+						<div class="rounded-lg p-3" style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);">
+							<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">{$t('sysinfo.cpu')}</h3>
+							<div class="space-y-1" style="color: var(--md-on-surface-variant);">
+								<p class="font-mono text-lg" style="color: var(--md-on-surface);">{sysInfo.availableProcessors}</p>
+								<p>{$t('sysinfo.uptime')}: <span class="font-mono" style="color: var(--md-on-surface);">{formatUptime(/** @type {number} */ (sysInfo.uptime))}</span></p>
+								<p>{$t('sysinfo.pid')}: <span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.pid}</span></p>
+							</div>
+						</div>
+
+						<!-- 内存 -->
+						<div class="col-span-2 rounded-lg p-3" style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);">
+							<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">{$t('sysinfo.memory')}</h3>
+							<div class="grid grid-cols-2 gap-2" style="color: var(--md-on-surface-variant);">
+								<p>{$t('sysinfo.mem_max')}: <span class="font-mono" style="color: var(--md-on-surface);">{formatBytes(mem.max)}</span></p>
+								<p>{$t('sysinfo.mem_allocated')}: <span class="font-mono" style="color: var(--md-on-surface);">{formatBytes(mem.total)}</span></p>
+								<p>{$t('sysinfo.mem_used')}: <span class="font-mono" style="color: var(--md-on-surface);">{formatBytes(mem.used)}</span></p>
+								<p>{$t('sysinfo.mem_free')}: <span class="font-mono" style="color: var(--md-on-surface);">{formatBytes(mem.free)}</span></p>
+							</div>
+							<!-- 内存使用条 -->
+							<div class="mt-2 h-2 w-full overflow-hidden rounded-full" style="background: var(--md-surface-container-highest);">
+								<div class="h-full rounded-full transition-all duration-500"
+									style="width: {Math.round(mem.used / mem.total * 100)}%; background: var(--md-primary);"></div>
+							</div>
+							<p class="mt-1 text-[11px]" style="color: var(--md-on-surface-variant);">
+								{Math.round(mem.used / mem.total * 100)}% · {formatBytes(mem.used)} / {formatBytes(mem.total)}
+							</p>
+						</div>
+					</div>
+				{/if}
 			</section>
 
 		</div>

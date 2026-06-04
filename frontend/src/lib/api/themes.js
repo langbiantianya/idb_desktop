@@ -22,6 +22,7 @@ import {
  * @property {string} darkThemeId  - 空串 = 内置 MD3
  * @property {string} locale - 'zh-CN' | 'zh-TW' | 'en' | 'ja' | 'ru'
  * @property {boolean} setupComplete - 首次引导已完成
+ * @property {number} memRefreshSeconds - 内存刷新间隔（秒）
  */
 
 /** @returns {Promise<ThemeInfo[]>} */

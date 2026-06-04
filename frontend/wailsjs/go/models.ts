@@ -7,6 +7,7 @@ export namespace main {
 	    themeMode: string;
 	    lightThemeId: string;
 	    darkThemeId: string;
+	    memRefreshSeconds: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -20,6 +21,7 @@ export namespace main {
 	        this.themeMode = source["themeMode"];
 	        this.lightThemeId = source["lightThemeId"];
 	        this.darkThemeId = source["darkThemeId"];
+	        this.memRefreshSeconds = source["memRefreshSeconds"];
 	    }
 	}
 	export class SaveConnectionInput {

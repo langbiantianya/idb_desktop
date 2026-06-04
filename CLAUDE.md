@@ -23,6 +23,7 @@ idb_desktop/
 ├── config.go                    # 连接配置持久化（~/.config/idb/connections.json）
 ├── settings.go                  # 应用设置持久化（~/.config/idb/settings.json：语言/主题/引导状态）
 ├── theme.go                     # 主题文件扫描/读取/部署（~/.config/idb/theme/*.css + 内置嵌入）
+├── settings.go                  # 应用设置持久化（~/.config/idb/settings.json：语言/主题/引导/刷新频率）
 ├── crypto_windows.go            # Windows DPAPI 密码加密
 ├── crypto_other.go              # 非 Windows 平台 AES-256-GCM 密码加密
 ├── engine.go                    # JVM 子进程生命周期 + 异步并发管道协议（含流式响应）
@@ -379,6 +380,7 @@ export const resolvedTheme = writable('light')  // 实际应用的 'light' | 'da
 export const lightThemeId = writable('')        // 浅色自定义主题 ID（空 = 内置 MD3）
 export const darkThemeId = writable('')         // 深色自定义主题 ID（空 = 内置 MD3）
 export const setupComplete = writable(false)    // 首次引导是否已完成
+export const memRefreshSeconds = writable(10)   // workspace 内存刷新间隔（秒）
 
 // i18n/index.js — 多语言
 export const locale = writable('zh-CN')         // 'zh-CN' | 'zh-TW' | 'en' | 'ja' | 'ru'
@@ -391,7 +393,7 @@ export function err(text) { pushToast('error', text) }
 ```
 
 > 所有写入引擎的请求从 `activeConnection` 取出 `connection` 字段，前端 API 层（`src/lib/api/index.js`）自动完成拼装。
-> 设置（语言/主题/引导状态）通过 `themeStore.js` 的 `persistSettings()` 写回 Go 后端 `~/.config/idb/settings.json`。
+> 设置（语言/主题/引导状态/内存刷新频率）通过 `themeStore.js` 的 `persistSettings()` 写回 Go 后端 `~/.config/idb/settings.json`。
 
 ### 8.5 Wails JS 绑定
 
@@ -526,8 +528,9 @@ cd frontend && npm run lint
 | 多语言（i18n） | ✅ 5 种语言（zh-CN / zh-TW / en / ja / ru），`$t('key')` 翻译函数，220+ 翻译 key |
 | 自定义主题 | ✅ 从 `~/.config/idb/theme/*.css` 加载，支持亮色/暗色分别指定，内置赛博朋克主题 |
 | 首次引导页 | ✅ `/setup` 路由：语言选择（下拉预览）→ 主题模式选择，MD3 动画过渡 |
-| 设置页 | ✅ `/settings` 路由：语言切换、主题模式、自定义主题选择、主题文件格式说明 |
-| 设置持久化 | ✅ `~/.config/idb/settings.json`：语言/主题/引导状态，Go 后端 atomic-rename |
+| 设置页 | ✅ `/settings` 路由：语言切换、主题模式、自定义主题选择、性能设置、系统信息展示、主题文件格式说明 |
+| 设置持久化 | ✅ `~/.config/idb/settings.json`：语言/主题/引导状态/内存刷新频率，Go 后端 atomic-rename |
+| 系统信息 | ✅ 设置页展示 JVM/OS/CPU/内存信息，workspace 底部内存占用条（可配置刷新频率 1-10s） |
 | NSIS 安装包 | ✅ Windows 安装包（含 engine 打包 + 快捷方式选项） |
 | Linux 分发包 | ✅ tar.gz + run.sh 启动器 |
 | Makefile 自动化 | ✅ 双平台构建 + Azul Zulu JRE 21 自动下载 + deps 依赖自检 |

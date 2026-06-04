@@ -272,4 +272,30 @@ export const zhTW = {
 	'theme.light': '淺色',
 	'theme.auto': '跟隨系統',
 	'theme.dark': '深色',
+
+	// ---- 效能設定 ----
+	'perf.title': '效能',
+	'perf.mem_refresh': '記憶體重新整理間隔',
+	'perf.seconds': '{n} 秒',
+
+	// ---- 系統資訊 ----
+	'sysinfo.title': '系統資訊',
+	'sysinfo.loading': '載入系統資訊…',
+	'sysinfo.error': '取得系統資訊失敗',
+	'sysinfo.jvm': 'JVM 資訊',
+	'sysinfo.jvm_version': '版本',
+	'sysinfo.jvm_vendor': '供應商',
+	'sysinfo.jvm_name': '虛擬機',
+	'sysinfo.os': '作業系統',
+	'sysinfo.os_name': '系統',
+	'sysinfo.os_arch': '架構',
+	'sysinfo.os_version': '版本',
+	'sysinfo.cpu': 'CPU 核心數',
+	'sysinfo.memory': '記憶體使用',
+	'sysinfo.mem_max': '最大可用',
+	'sysinfo.mem_allocated': '已分配',
+	'sysinfo.mem_used': '已使用',
+	'sysinfo.mem_free': '空閒',
+	'sysinfo.uptime': '運行時間',
+	'sysinfo.pid': '程序 ID',
 };

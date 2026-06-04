@@ -272,4 +272,30 @@ export const zhCN = {
 	'theme.light': '浅色',
 	'theme.auto': '跟随系统',
 	'theme.dark': '深色',
+
+	// ---- 性能设置 ----
+	'perf.title': '性能',
+	'perf.mem_refresh': '内存刷新间隔',
+	'perf.seconds': '{n} 秒',
+
+	// ---- 系统信息 ----
+	'sysinfo.title': '系统信息',
+	'sysinfo.loading': '加载系统信息…',
+	'sysinfo.error': '获取系统信息失败',
+	'sysinfo.jvm': 'JVM 信息',
+	'sysinfo.jvm_version': '版本',
+	'sysinfo.jvm_vendor': '供应商',
+	'sysinfo.jvm_name': '虚拟机',
+	'sysinfo.os': '操作系统',
+	'sysinfo.os_name': '系统',
+	'sysinfo.os_arch': '架构',
+	'sysinfo.os_version': '版本',
+	'sysinfo.cpu': 'CPU 核心数',
+	'sysinfo.memory': '内存使用',
+	'sysinfo.mem_max': '最大可用',
+	'sysinfo.mem_allocated': '已分配',
+	'sysinfo.mem_used': '已使用',
+	'sysinfo.mem_free': '空闲',
+	'sysinfo.uptime': '运行时间',
+	'sysinfo.pid': '进程 ID',
 };
