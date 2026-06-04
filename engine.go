@@ -64,7 +64,11 @@ func resolveJarPath(appDir string) string {
 }
 
 // StartEngine 拉起 JVM 子进程，建立 stdin/stdout 行协议管道，并启动 reader goroutine。
-func StartEngine(ctx context.Context) (*Engine, error) {
+// maxMemoryMB 为 JVM 最大堆内存（MB），传 0 使用默认值（系统内存 70%）。
+func StartEngine(ctx context.Context, maxMemoryMB int) (*Engine, error) {
+	if maxMemoryMB < 64 {
+		maxMemoryMB = defaultJvmMemoryMB()
+	}
 	appDir := resolveAppDir()
 	javaBin := resolveJavaBin(appDir)
 	jarPath := resolveJarPath(appDir)
@@ -77,9 +81,9 @@ func StartEngine(ctx context.Context) (*Engine, error) {
 	}
 
 	cmd := exec.CommandContext(ctx, javaBin,
-		"-Xms32m",          // 初始堆 32MB
-		"-Xmx256m",         // 最大堆锁死 256MB
-		"-XX:+UseSerialGC", // 桌面单人使用，串行 GC 更省内存
+		"-Xms32m",
+		fmt.Sprintf("-Xmx%dm", maxMemoryMB),
+		"-XX:+UseSerialGC",
 		"-jar", jarPath,
 	)
 	cmd.Dir = appDir

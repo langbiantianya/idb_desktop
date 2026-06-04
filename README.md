@@ -21,6 +21,7 @@
 - **首次引导** — 首次启动自动进入引导页（`/setup`），选择语言和主题模式
 - **设置页** — 独立设置页面（`/settings`），管理语言、主题模式、自定义主题、内存刷新频率、系统信息展示
 - **系统信息** — 设置页展示 JVM/OS/CPU/内存详情，workspace 底部实时内存占用条（可配置 1-10s 刷新频率）
+- **JVM 内存配置** — 设置页可配置 JVM 最大堆内存（64-4096MB，默认 256MB），一键重启引擎生效
 - **双路由设计** — 连接选择页（`/`）与数据库工作台（`/workspace`）分离
 - **WHERE / ORDER BY 双重校验** — 前端方言级禁止关键字扫描 + 引擎侧二次校验
 
@@ -98,6 +99,8 @@ idb_desktop/
 ├── config.go               # 连接配置持久化（~/.config/idb/connections.json）
 ├── settings.go             # 应用设置持久化（~/.config/idb/settings.json）
 ├── theme.go                # 主题文件扫描/读取/部署（~/.config/idb/theme/*.css）
+├── mem_windows.go          # Windows 系统内存检测
+├── mem_unix.go             # Linux/macOS 系统内存检测
 ├── crypto_windows.go       # Windows DPAPI 加密
 ├── crypto_other.go         # AES-256-GCM 加密（非 Windows，密钥存于 ~/.config/idb/key）
 ├── engine.go               # JVM 子进程生命周期 + 异步并发管道 + 流式响应（事件推送）

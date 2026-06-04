@@ -277,6 +277,12 @@ export const ru = {
 	'perf.title': 'Производительность',
 	'perf.mem_refresh': 'Интервал обновления памяти',
 	'perf.seconds': '{n} сек',
+	'perf.jvm_memory': 'Максимальная куча JVM',
+	'perf.jvm_memory_hint': 'По умолчанию 256 МБ. После изменения перезапустите движок.',
+	'perf.jvm_restart': 'Перезапустить движок',
+	'perf.jvm_restarting': 'Перезапуск движка…',
+	'perf.jvm_restart_ok': 'Движок успешно перезапущен',
+	'perf.jvm_restart_fail': 'Не удалось перезапустить движок',
 
 	// ---- Информация о системе ----
 	'sysinfo.title': 'Информация о системе',

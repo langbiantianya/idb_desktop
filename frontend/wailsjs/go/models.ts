@@ -8,6 +8,7 @@ export namespace main {
 	    lightThemeId: string;
 	    darkThemeId: string;
 	    memRefreshSeconds: number;
+	    JvmMaxMemoryMB: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -22,6 +23,7 @@ export namespace main {
 	        this.lightThemeId = source["lightThemeId"];
 	        this.darkThemeId = source["darkThemeId"];
 	        this.memRefreshSeconds = source["memRefreshSeconds"];
+	        this.JvmMaxMemoryMB = source["JvmMaxMemoryMB"];
 	    }
 	}
 	export class SaveConnectionInput {

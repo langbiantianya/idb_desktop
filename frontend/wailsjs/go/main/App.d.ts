@@ -20,6 +20,8 @@ export function ListThemes():Promise<Array<main.ThemeInfo>>;
 
 export function LoadSettings():Promise<main.AppSettings>;
 
+export function RestartEngine():Promise<void>;
+
 export function SaveConnection(arg1:main.SaveConnectionInput):Promise<main.SavedConnection>;
 
 export function SaveSettings(arg1:main.AppSettings):Promise<void>;

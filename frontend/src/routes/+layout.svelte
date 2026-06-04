@@ -2,13 +2,42 @@
 	import './layout.css';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { fly } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 	import favicon from '$lib/assets/favicon.svg';
 	import ToastHost from '$lib/components/ToastHost.svelte';
+	import SettingsPanel from '$lib/components/SettingsPanel.svelte';
 	import { initTheme, setupComplete, settingsLoaded } from '$lib/stores/themeStore.js';
+	import { showSettings, closeSettings } from '$lib/stores/overlayStore.js';
 	import { IsDevMode } from '../../wailsjs/go/main/App.js';
 
 	let { children } = $props();
 	let devMode = $state(false);
+
+	/** 当前路由路径，用于触发页面切换动画 */
+	let currentPath = $state('');
+	/** 前一个路由路径，用于判断动画方向 */
+	let prevPath = $state('');
+
+	/** MD3 emphasized decelerate */
+	function mdDecelerate(/** @type {number} */ t) {
+		return 1 - Math.pow(1 - t, 3);
+	}
+
+	/** 判断是否为"返回"方向（workspace→连接页 / settings→上级） */
+	function isBackNav(/** @type {string} */ from, /** @type {string} */ to) {
+		// workspace → 首页 = 返回
+		if (from.startsWith('/workspace') && to === '/') return true;
+		// setup → 首页 = 返回
+		if (from === '/setup' && to === '/') return true;
+		return false;
+	}
+
+	// 路由变化时更新路径（触发 {#key} 重渲染 + 动画）
+	$effect(() => {
+		prevPath = currentPath;
+		currentPath = page.url.pathname;
+	});
 
 	$effect(() => {
 		initTheme();
@@ -25,5 +54,25 @@
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 <svelte:window oncontextmenu={devMode ? undefined : (e) => e.preventDefault()} />
-{@render children()}
+{#key currentPath}
+	{@const back = isBackNav(prevPath, currentPath)}
+	<div
+		class="h-screen"
+		in:fly={{ x: back ? 300 : -300, duration: 350, easing: mdDecelerate }}
+		out:fly={{ x: back ? -300 : 300, duration: 250, easing: cubicOut }}
+	>
+		{@render children()}
+	</div>
+{/key}
 <ToastHost />
+
+<!-- 设置覆盖层（全局，不销毁当前页面状态） -->
+{#if $showSettings}
+	<div
+		class="fixed inset-0 z-[90]"
+		in:fly={{ x: 300, duration: 350, easing: mdDecelerate }}
+		out:fly={{ x: 300, duration: 250, easing: cubicOut }}
+	>
+		<SettingsPanel onClose={closeSettings} />
+	</div>
+{/if}

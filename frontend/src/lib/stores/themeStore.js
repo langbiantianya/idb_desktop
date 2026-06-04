@@ -38,6 +38,9 @@ export const setupComplete = writable(false);
 /** 内存刷新间隔（秒）。 */
 export const memRefreshSeconds = writable(10);
 
+/** JVM 最大堆内存（MB）。 */
+export const jvmMaxMemoryMB = writable(256);
+
 // --- 自定义 CSS 注入 ---
 
 let currentInjectedId = '';
@@ -149,7 +152,8 @@ function persistSettings() {
 		darkThemeId: get(darkThemeId),
 		locale: get(locale),
 		setupComplete: get(setupComplete),
-		memRefreshSeconds: get(memRefreshSeconds)
+		memRefreshSeconds: get(memRefreshSeconds),
+		JvmMaxMemoryMB: get(jvmMaxMemoryMB)
 	});
 }
 
@@ -162,6 +166,12 @@ export function completeSetup() {
 /** 设置内存刷新间隔并持久化。 @param {number} seconds */
 export function setMemRefresh(seconds) {
 	memRefreshSeconds.set(seconds);
+	persistSettings();
+}
+
+/** 设置 JVM 最大堆内存并持久化。 @param {number} mb */
+export function setJvmMaxMemory(mb) {
+	jvmMaxMemoryMB.set(mb);
 	persistSettings();
 }
 
@@ -188,6 +198,7 @@ export async function initTheme() {
 		}
 		setupComplete.set(settings.setupComplete ?? false);
 		memRefreshSeconds.set(settings.memRefreshSeconds ?? 10);
+		jvmMaxMemoryMB.set(settings.JvmMaxMemoryMB ?? 256);
 		// 兼容：同步写回 localStorage
 		localStorage.setItem(STORAGE_KEY, get(themeMode));
 	} catch {

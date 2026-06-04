@@ -277,6 +277,12 @@ export const zhTW = {
 	'perf.title': '效能',
 	'perf.mem_refresh': '記憶體重新整理間隔',
 	'perf.seconds': '{n} 秒',
+	'perf.jvm_memory': 'JVM 最大堆積記憶體',
+	'perf.jvm_memory_hint': '預設 256MB，修改後需重新啟動引擎生效',
+	'perf.jvm_restart': '重新啟動引擎',
+	'perf.jvm_restarting': '正在重新啟動引擎…',
+	'perf.jvm_restart_ok': '引擎重新啟動成功',
+	'perf.jvm_restart_fail': '引擎重新啟動失敗',
 
 	// ---- 系統資訊 ----
 	'sysinfo.title': '系統資訊',

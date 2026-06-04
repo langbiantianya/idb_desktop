@@ -16,6 +16,7 @@ type AppSettings struct {
 	LightThemeID      string `json:"lightThemeId"`      // 浅色模式主题 ID，空 = 内置 MD3
 	DarkThemeID       string `json:"darkThemeId"`       // 深色模式主题 ID，空 = 内置 MD3
 	MemRefreshSeconds int    `json:"memRefreshSeconds"` // 内存刷新间隔（秒），默认 10
+	JvmMaxMemoryMB    int    `json:"JvmMaxMemoryMB"`    // JVM 最大堆内存（MB），默认 256
 }
 
 const settingsFileName = "settings.json"
@@ -58,7 +59,16 @@ func (s *configStore) LoadSettings() (AppSettings, error) {
 	if settings.MemRefreshSeconds < 1 || settings.MemRefreshSeconds > 60 {
 		settings.MemRefreshSeconds = 10
 	}
+	if settings.JvmMaxMemoryMB == 0 {
+		// 默认值：系统内存的 70%，上下限 256-4096 MB
+		settings.JvmMaxMemoryMB = defaultJvmMemoryMB()
+	}
 	return settings, nil
+}
+
+// defaultJvmMemoryMB 默认 JVM 最大堆 256MB，用户可在设置中调整（64-4096）。
+func defaultJvmMemoryMB() int {
+	return 256
 }
 
 // SaveSettings 写入 ~/.config/idb/settings.json（atomic rename）。

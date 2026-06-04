@@ -277,6 +277,12 @@ export const zhCN = {
 	'perf.title': '性能',
 	'perf.mem_refresh': '内存刷新间隔',
 	'perf.seconds': '{n} 秒',
+	'perf.jvm_memory': 'JVM 最大堆内存',
+	'perf.jvm_memory_hint': '默认 256MB，修改后需重启引擎生效',
+	'perf.jvm_restart': '重启引擎',
+	'perf.jvm_restarting': '重启中…',
+	'perf.jvm_restart_ok': '引擎已重启',
+	'perf.jvm_restart_fail': '引擎重启失败',
 
 	// ---- 系统信息 ----
 	'sysinfo.title': '系统信息',

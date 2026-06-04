@@ -1,5 +1,6 @@
 <script>
 	import { goto } from '$app/navigation';
+	import { openSettings } from '$lib/stores/overlayStore.js';
 	import { listSchemas } from '$lib/api';
 	import {
 		listSavedConnections,
@@ -218,7 +219,7 @@
 				</div>
 				<div class="flex items-center gap-1">
 					<ThemeToggle />
-					<button class="md-icon-btn" onclick={() => goto('/settings')} title={$t('workspace.settings')}>
+					<button class="md-icon-btn" onclick={openSettings} title={$t('workspace.settings')}>
 						<svg width="18" height="18" viewBox="0 0 20 20" fill="none">
 							<path d="M8.325 2.317a1.417 1.417 0 013.35 0 1.417 1.417 0 002.142.866 1.417 1.417 0 012.368 2.368 1.417 1.417 0 00.866 2.142 1.417 1.417 0 010 3.35 1.417 1.417 0 00-.866 2.142 1.417 1.417 0 01-2.368 2.368 1.417 1.417 0 00-2.142.866 1.417 1.417 0 01-3.35 0 1.417 1.417 0 00-2.142-.866 1.417 1.417 0 01-2.368-2.368 1.417 1.417 0 00-.866-2.142 1.417 1.417 0 010-3.35 1.417 1.417 0 00.866-2.142 1.417 1.417 0 012.368-2.368 1.417 1.417 0 002.142-.866z" stroke="currentColor" stroke-width="1.3"/>
 							<circle cx="10" cy="10" r="2.5" stroke="currentColor" stroke-width="1.3"/>

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -28,13 +29,17 @@ func (a *App) startup(ctx context.Context) {
 		wruntime.LogWarningf(ctx, "deploy bundled themes failed: %v", err)
 	}
 
-	eng, err := StartEngine(ctx)
+	// 读取 JVM 内存配置
+	settings, _ := a.cfg.LoadSettings()
+	maxMem := settings.JvmMaxMemoryMB
+
+	eng, err := StartEngine(ctx, maxMem)
 	if err != nil {
 		wruntime.LogErrorf(ctx, "engine start failed: %v", err)
 		return
 	}
 	a.engine = eng
-	wruntime.LogInfof(ctx, "engine started, pid=%d", eng.cmd.Process.Pid)
+	wruntime.LogInfof(ctx, "engine started, pid=%d, -Xmx%dm", eng.cmd.Process.Pid, maxMem)
 }
 
 // shutdown 在主窗口关闭前调用，回收子进程。
@@ -112,6 +117,30 @@ func (a *App) DeleteConnection(id string) error {
 // IsDevMode 暴露给前端判断当前是否为开发模式（wails dev）。
 func (a *App) IsDevMode() bool {
 	return isDevBuild()
+}
+
+// RestartEngine 关闭当前引擎并以新配置重启（用于 JVM 内存变更后）。
+func (a *App) RestartEngine() error {
+	// 关闭旧引擎
+	if a.engine != nil {
+		a.engine.Shutdown()
+		a.engine = nil
+	}
+
+	// 读取最新设置
+	settings, err := a.cfg.LoadSettings()
+	if err != nil {
+		return fmt.Errorf("load settings: %w", err)
+	}
+	maxMem := settings.JvmMaxMemoryMB
+
+	eng, err := StartEngine(a.ctx, maxMem)
+	if err != nil {
+		return fmt.Errorf("restart engine: %w", err)
+	}
+	a.engine = eng
+	wruntime.LogInfof(a.ctx, "engine restarted, pid=%d, -Xmx%dm", eng.cmd.Process.Pid, maxMem)
+	return nil
 }
 
 // ---------- 主题管理 ----------

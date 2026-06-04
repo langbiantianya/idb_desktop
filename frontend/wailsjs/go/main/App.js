@@ -38,6 +38,10 @@ export function LoadSettings() {
   return window['go']['main']['App']['LoadSettings']();
 }
 
+export function RestartEngine() {
+  return window['go']['main']['App']['RestartEngine']();
+}
+
 export function SaveConnection(arg1) {
   return window['go']['main']['App']['SaveConnection'](arg1);
 }

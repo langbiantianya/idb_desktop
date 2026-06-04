@@ -277,6 +277,12 @@ export const ja = {
 	'perf.title': 'パフォーマンス',
 	'perf.mem_refresh': 'メモリ更新間隔',
 	'perf.seconds': '{n} 秒',
+	'perf.jvm_memory': 'JVM 最大ヒープメモリ',
+	'perf.jvm_memory_hint': 'デフォルト256MB。変更後はエンジンを再起動してください。',
+	'perf.jvm_restart': 'エンジンを再起動',
+	'perf.jvm_restarting': 'エンジンを再起動中…',
+	'perf.jvm_restart_ok': 'エンジンの再起動に成功しました',
+	'perf.jvm_restart_fail': 'エンジンの再起動に失敗しました',
 
 	// ---- システム情報 ----
 	'sysinfo.title': 'システム情報',

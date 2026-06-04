@@ -277,6 +277,12 @@ export const en = {
 	'perf.title': 'Performance',
 	'perf.mem_refresh': 'Memory refresh interval',
 	'perf.seconds': '{n} seconds',
+	'perf.jvm_memory': 'JVM max heap memory',
+	'perf.jvm_memory_hint': 'Default 256MB. Restart engine after change.',
+	'perf.jvm_restart': 'Restart engine',
+	'perf.jvm_restarting': 'Restarting engine…',
+	'perf.jvm_restart_ok': 'Engine restarted successfully',
+	'perf.jvm_restart_fail': 'Engine restart failed',
 
 	// ---- System Info ----
 	'sysinfo.title': 'System Information',
