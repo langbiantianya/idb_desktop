@@ -46,6 +46,86 @@
 	let streaming = $state(false);
 	let streamedRowCount = $state(0);
 
+	// ── Virtual Scroll ──────────────────────────────────────────────
+	const VIRTUAL_THRESHOLD = 500;
+	const OVERSCAN = 10;
+	const ESTIMATED_ROW_H = 28;
+
+	let scrollEl = $state(/** @type {HTMLDivElement | null} */ (null));
+	let virtualActive = $state(false);
+	let scrollTop = $state(0);
+	let viewportH = $state(0);
+	let measuredRowH = $state(ESTIMATED_ROW_H);
+	let colWidths = $state(/** @type {number[]} */ ([]));
+	let colsMeasured = $state(false);
+	let rafId = 0;
+
+	/** @param {Event} e */
+	function onScroll(e) {
+		if (rafId) return;
+		rafId = requestAnimationFrame(() => {
+			rafId = 0;
+			scrollTop = /** @type {HTMLDivElement} */ (e.target).scrollTop;
+		});
+	}
+
+	let vRange = $derived.by(() => {
+		if (!virtualActive) return null;
+		const n = rows.length;
+		if (n === 0) return null;
+		const rh = measuredRowH;
+		const start = Math.max(0, Math.floor(scrollTop / rh) - OVERSCAN);
+		const end = Math.min(n, Math.ceil((scrollTop + viewportH) / rh) + OVERSCAN);
+		const visCount = end - start;
+		return {
+			start,
+			end,
+			offsetY: start * rh,
+			bottomPad: (n - start - visCount) * rh
+		};
+	});
+
+	let visRows = $derived(vRange ? rows.slice(vRange.start, vRange.end) : null);
+
+	/** Measure <th> widths once, then lock to table-layout:fixed */
+	function measureCols() {
+		if (colsMeasured || !scrollEl) return;
+		const ths = scrollEl.querySelectorAll('thead th');
+		if (!ths.length) return;
+		colWidths = [...ths].map((th) => Math.max(80, th.getBoundingClientRect().width));
+		colsMeasured = true;
+	}
+
+	// ── Viewport size via ResizeObserver ────────────────────────────
+	$effect(() => {
+		const el = scrollEl;
+		if (!el) return;
+		const ro = new ResizeObserver(([entry]) => {
+			viewportH = entry.contentRect.height;
+		});
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
+
+	// ── Column width measurement (only after streaming completes, columns stable) ─
+	$effect(() => {
+		if (!virtualActive || streaming || rows.length === 0 || colsMeasured) return;
+		requestAnimationFrame(measureCols);
+	});
+
+	// ── Row height calibration ──────────────────────────────────────
+	$effect(() => {
+		if (!virtualActive || !scrollEl) return;
+		requestAnimationFrame(() => {
+			const row = scrollEl?.querySelector('tbody tr:not(.vs-spacer)');
+			if (!row) return;
+			const h = row.getBoundingClientRect().height;
+			if (h > 0 && Math.abs(h - measuredRowH) > 1) {
+				measuredRowH = Math.round(h);
+			}
+		});
+	});
+
 	let inserting = $state(false);
 	let editing = $state(/** @type {Record<string, unknown> | null} */ (null));
 	let confirmDelete = $state(/** @type {Record<string, unknown> | null} */ (null));
@@ -179,6 +259,9 @@
 		if (streaming) return;
 		streaming = true;
 		streamedRowCount = 0;
+		virtualActive = false;
+		colsMeasured = false;
+		colWidths = [];
 		rows = [];
 		columns = [];
 		const accRows = [];
@@ -208,6 +291,10 @@
 						if (accRows.length % 100 === 0) {
 							rows = [...accRows];
 							columns = [...colSet];
+							// 行数超过阈值时立即启用虚拟滚动，避免 DOM 节点爆炸
+							if (!virtualActive && accRows.length > VIRTUAL_THRESHOLD) {
+								virtualActive = true;
+							}
 						}
 					}
 				},
@@ -219,6 +306,15 @@
 			// 最终刷新
 			rows = accRows;
 			columns = [...colSet];
+			// 确保虚拟模式已启用（可能在流式过程中已激活）
+			if (accRows.length > VIRTUAL_THRESHOLD && !virtualActive) {
+				virtualActive = true;
+			}
+			// 列已全部发现，重置测量标记以触发列宽锁定
+			if (virtualActive) {
+				colsMeasured = false;
+				colWidths = [];
+			}
 		} finally {
 			streaming = false;
 			streamedRowCount = 0;
@@ -238,6 +334,10 @@
 		pageSize = newSize;
 		page = 1;
 		total = null;
+		virtualActive = false;
+		colsMeasured = false;
+		colWidths = [];
+		scrollTop = 0;
 		if (newSize === 0) {
 			loadStreaming();
 		} else {
@@ -499,22 +599,31 @@
 		</div>
 	</header>
 
-	<div class="flex-1 overflow-auto pb-3">
+	<div
+		class="flex-1 overflow-auto pb-3"
+		bind:this={scrollEl}
+		onscroll={onScroll}
+		bind:clientHeight={viewportH}
+	>
 		{#if rows.length === 0 && !pending}
 			<p class="py-8 text-center text-sm" style="color: var(--md-on-surface-variant);">
 				{$t('datagrid.empty')}
 			</p>
 		{:else if columns.length > 0}
-			<table class="min-w-full text-left text-xs">
+			<table
+				class="min-w-full text-left text-xs"
+				style:table-layout={colsMeasured ? 'fixed' : 'auto'}
+			>
 				<thead
 					class="sticky top-0 z-10"
 					style="background: var(--md-surface-container); color: var(--md-on-surface-variant);"
 				>
 					<tr>
-						{#each columns as col (col)}
+						{#each columns as col, ci (col)}
 							<th
-								class="px-3 py-2 font-mono font-medium whitespace-nowrap"
+								class="px-3 py-2 font-mono font-medium truncate"
 								style="border-bottom: 1px solid var(--md-outline-variant);"
+								style:width={colsMeasured ? `${colWidths[ci] ?? 120}px` : undefined}
 								oncontextmenu={(e) => openHeaderCtx(e, col)}
 							>
 								{col}
@@ -533,63 +642,142 @@
 						{/if}
 					</tr>
 				</thead>
-				<tbody>
-					{#each rows as row, i (i)}
-						<tr
-							class="row-hover"
-							style:background={i % 2 === 0
-								? 'transparent'
-								: 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}
-						>
-							{#each columns as col (col)}
-								<td
-									class="max-w-[24rem] truncate px-3 py-1.5 font-mono"
-									style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);"
-									oncontextmenu={(e) => openCellCtx(e, row, col, row[col])}
-								>
-									{#if isLob(row[col])}
-										<button
-											class="italic underline decoration-dotted"
-											style="color: var(--md-primary);"
-											onclick={() => openLob(row, col)}
-											title={$t('datagrid.lob_tooltip')}
-										>
-											{row[col]}
-										</button>
-									{:else}
-										{renderCellWithType(col, row[col])}
-									{/if}
-								</td>
-							{/each}
-							{#if !readOnly}
-								<td
-									class="sticky right-0 px-3 py-1.5"
-									style:background={i % 2 === 0
-										? 'var(--md-surface)'
-										: 'var(--md-surface-container-low)'}
-									style="border-bottom: 1px solid var(--md-outline-variant);"
-								>
-									<div class="flex gap-2 text-xs">
-										<button
-											class="md-btn-text"
-											style="padding: 0.125rem 0.5rem;"
-											onclick={() => (editing = row)}
-										>
-											{$t('common.edit')}
-										</button>
-										<button
-											class="md-btn-text"
-											style="padding: 0.125rem 0.5rem; color: var(--md-error);"
-											onclick={() => (confirmDelete = row)}
-										>
-											{$t('common.delete')}
-										</button>
-									</div>
-								</td>
-							{/if}
+				{#if vRange}
+					<!-- 虚拟滚动：spacer 撑开上方不可见区域，把可见行推到正确位置 -->
+					<tbody>
+						<!-- 上方 spacer：滚动位置之前的行 -->
+						<tr class="vs-spacer" style:height="{vRange.offsetY}px">
+							<td
+								colspan={columns.length + (readOnly ? 0 : 1)}
+								style="padding: 0; border: none;"
+							></td>
 						</tr>
-					{/each}
-				</tbody>
+						<!-- 可见行 -->
+						{#each visRows as row, vi (vRange.start + vi)}
+							{@const i = vRange.start + vi}
+							<tr
+								class="row-hover"
+								style:background={i % 2 === 0
+									? 'transparent'
+									: 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}
+							>
+								{#each columns as col, ci (col)}
+									<td
+										class="truncate px-3 py-1.5 font-mono"
+										style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);"
+										style:width={colsMeasured ? `${colWidths[ci] ?? 120}px` : undefined}
+										oncontextmenu={(e) => openCellCtx(e, row, col, row[col])}
+									>
+										{#if isLob(row[col])}
+											<button
+												class="italic underline decoration-dotted"
+												style="color: var(--md-primary);"
+												onclick={() => openLob(row, col)}
+												title={$t('datagrid.lob_tooltip')}
+											>
+												{row[col]}
+											</button>
+										{:else}
+											{renderCellWithType(col, row[col])}
+										{/if}
+									</td>
+								{/each}
+								{#if !readOnly}
+									<td
+										class="sticky right-0 px-3 py-1.5"
+										style:background={i % 2 === 0
+											? 'var(--md-surface)'
+											: 'var(--md-surface-container-low)'}
+										style="border-bottom: 1px solid var(--md-outline-variant);"
+									>
+										<div class="flex gap-2 text-xs">
+											<button
+												class="md-btn-text"
+												style="padding: 0.125rem 0.5rem;"
+												onclick={() => (editing = row)}
+											>
+												{$t('common.edit')}
+											</button>
+											<button
+												class="md-btn-text"
+												style="padding: 0.125rem 0.5rem; color: var(--md-error);"
+												onclick={() => (confirmDelete = row)}
+											>
+												{$t('common.delete')}
+											</button>
+										</div>
+									</td>
+								{/if}
+							</tr>
+						{/each}
+						<!-- 下方 spacer：保证表格总高度恒定，滚动条大小不变 -->
+						<tr class="vs-spacer" style:height="{vRange.bottomPad}px">
+							<td
+								colspan={columns.length + (readOnly ? 0 : 1)}
+								style="padding: 0; border: none;"
+							></td>
+						</tr>
+					</tbody>
+				{:else}
+					<!-- 普通渲染：分页模式 / 小数据集 -->
+					<tbody>
+						{#each rows as row, i (i)}
+							<tr
+								class="row-hover"
+								style:background={i % 2 === 0
+									? 'transparent'
+									: 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}
+							>
+								{#each columns as col (col)}
+									<td
+										class="max-w-[24rem] truncate px-3 py-1.5 font-mono"
+										style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);"
+										oncontextmenu={(e) => openCellCtx(e, row, col, row[col])}
+									>
+										{#if isLob(row[col])}
+											<button
+												class="italic underline decoration-dotted"
+												style="color: var(--md-primary);"
+												onclick={() => openLob(row, col)}
+												title={$t('datagrid.lob_tooltip')}
+											>
+												{row[col]}
+											</button>
+										{:else}
+											{renderCellWithType(col, row[col])}
+										{/if}
+									</td>
+								{/each}
+								{#if !readOnly}
+									<td
+										class="sticky right-0 px-3 py-1.5"
+										style:background={i % 2 === 0
+											? 'var(--md-surface)'
+											: 'var(--md-surface-container-low)'}
+										style="border-bottom: 1px solid var(--md-outline-variant);"
+									>
+										<div class="flex gap-2 text-xs">
+											<button
+												class="md-btn-text"
+												style="padding: 0.125rem 0.5rem;"
+												onclick={() => (editing = row)}
+											>
+												{$t('common.edit')}
+											</button>
+											<button
+												class="md-btn-text"
+												style="padding: 0.125rem 0.5rem; color: var(--md-error);"
+												onclick={() => (confirmDelete = row)}
+											>
+												{$t('common.delete')}
+											</button>
+										</div>
+									</td>
+								{/if}
+							</tr>
+						{/each}
+					</tbody>
+				{/if}
 			</table>
 		{/if}
 	</div>

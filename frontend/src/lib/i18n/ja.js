@@ -157,11 +157,11 @@ export const ja = {
 	// ---- SQL コンソール ----
 	'sql.title': 'SQL コンソール',
 	'sql.no_db': '(データベース未選択)',
-	'sql.format_tooltip': 'フォーマット (Ctrl/Cmd + Shift + F)',
+	'sql.format_tooltip': 'フォーマット (Alt + Shift + F)',
 	'sql.format': 'フォーマット',
 	'sql.run_tooltip': '実行 (Ctrl/Cmd + Enter)',
 	'sql.run_aria': '実行',
-	'sql.placeholder': 'SELECT id, name FROM users LIMIT 10; ...\nCtrl/Cmd + Enter で実行（選択部分のみ実行）\nCtrl/Cmd + Shift + F でフォーマット',
+	'sql.placeholder': 'SELECT id, name FROM users LIMIT 10; ...\nCtrl/Cmd + Enter で実行（選択部分のみ実行）\nAlt + Shift + F でフォーマット',
 	'sql.exec_failed': '実行に失敗しました',
 	'sql.affected_rows': '影響行数: {count}',
 	'sql.rows_result': '{count} 行の結果',

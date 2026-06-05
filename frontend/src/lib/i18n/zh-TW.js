@@ -157,11 +157,11 @@ export const zhTW = {
 	// ---- SQL 控制台 ----
 	'sql.title': 'SQL 控制台',
 	'sql.no_db': '(未選庫)',
-	'sql.format_tooltip': '格式化 (Ctrl/Cmd + Shift + F)',
+	'sql.format_tooltip': '格式化 (Alt + Shift + F)',
 	'sql.format': '格式化',
 	'sql.run_tooltip': '執行 (Ctrl/Cmd + Enter)',
 	'sql.run_aria': '執行',
-	'sql.placeholder': 'SELECT id, name FROM users LIMIT 10; ...\nCtrl/Cmd + Enter 執行（有選取則執行選取部分）\nCtrl/Cmd + Shift + F 格式化',
+	'sql.placeholder': 'SELECT id, name FROM users LIMIT 10; ...\nCtrl/Cmd + Enter 執行（有選取則執行選取部分）\nAlt + Shift + F 格式化',
 	'sql.exec_failed': '執行失敗',
 	'sql.affected_rows': '受影響列數：{count}',
 	'sql.rows_result': '{count} 列結果',

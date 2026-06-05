@@ -157,11 +157,11 @@ export const en = {
 	// ---- SQL Console ----
 	'sql.title': 'SQL Console',
 	'sql.no_db': '(No database selected)',
-	'sql.format_tooltip': 'Format (Ctrl/Cmd + Shift + F)',
+	'sql.format_tooltip': 'Format (Alt + Shift + F)',
 	'sql.format': 'Format',
 	'sql.run_tooltip': 'Execute (Ctrl/Cmd + Enter)',
 	'sql.run_aria': 'Execute',
-	'sql.placeholder': 'SELECT id, name FROM users LIMIT 10; ...\nCtrl/Cmd + Enter to execute (executes selection if text is selected)\nCtrl/Cmd + Shift + F to format',
+	'sql.placeholder': 'SELECT id, name FROM users LIMIT 10; ...\nCtrl/Cmd + Enter to execute (executes selection if text is selected)\nAlt + Shift + F to format',
 	'sql.exec_failed': 'Execution failed',
 	'sql.affected_rows': 'Affected rows: {count}',
 	'sql.rows_result': '{count} rows returned',

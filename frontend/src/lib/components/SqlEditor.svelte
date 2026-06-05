@@ -123,7 +123,7 @@
 				onCtrlEnter?.();
 			});
 
-			editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
+			editor.addCommand(monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
 				onFormat?.();
 			});
 

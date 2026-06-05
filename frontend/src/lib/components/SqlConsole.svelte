@@ -55,6 +55,86 @@
 	);
 	let headerCtx = $state(/** @type {{ x: number; y: number; col: string } | null} */ (null));
 
+	// ── Virtual Scroll ──────────────────────────────────────────────
+	const VS_THRESHOLD = 500;
+	const VS_OVERSCAN = 10;
+	const VS_ESTIMATED_RH = 28;
+
+	let vsScrollEl = $state(/** @type {HTMLDivElement | null} */ (null));
+	let vsActive = $state(false);
+	let vsScrollTop = $state(0);
+	let vsViewportH = $state(0);
+	let vsRowH = $state(VS_ESTIMATED_RH);
+	let vsColWidths = $state(/** @type {number[]} */ ([]));
+	let vsColsLocked = $state(false);
+	let vsRafId = 0;
+	let vsStreaming = $state(false);
+
+	/** 当前激活的结果（响应式依赖 results 和 activeResultIdx） */
+	let cur = $derived(results[activeResultIdx] ?? null);
+
+	let vsRange = $derived.by(() => {
+		if (!vsActive || !cur) return null;
+		const n = cur.rows.length;
+		if (n === 0) return null;
+		const rh = vsRowH;
+		const start = Math.max(0, Math.floor(vsScrollTop / rh) - VS_OVERSCAN);
+		const end = Math.min(n, Math.ceil((vsScrollTop + vsViewportH) / rh) + VS_OVERSCAN);
+		const visCount = end - start;
+		return { start, end, offsetY: start * rh, bottomPad: (n - start - visCount) * rh };
+	});
+
+	let vsVisRows = $derived(vsRange && cur ? cur.rows.slice(vsRange.start, vsRange.end) : null);
+
+	/** @param {Event} e */
+	function vsOnScroll(e) {
+		if (vsRafId) return;
+		vsRafId = requestAnimationFrame(() => {
+			vsRafId = 0;
+			vsScrollTop = /** @type {HTMLDivElement} */ (e.target).scrollTop;
+		});
+	}
+
+	function vsMeasureCols() {
+		if (vsColsLocked || !vsScrollEl || !cur) return;
+		const ths = vsScrollEl.querySelectorAll('thead th');
+		if (!ths.length) return;
+		vsColWidths = [...ths].map((th) => Math.max(80, th.getBoundingClientRect().width));
+		vsColsLocked = true;
+	}
+
+	function vsReset() {
+		vsActive = false;
+		vsScrollTop = 0;
+		vsRowH = VS_ESTIMATED_RH;
+		vsColWidths = [];
+		vsColsLocked = false;
+		vsStreaming = false;
+	}
+
+	$effect(() => {
+		const el = vsScrollEl;
+		if (!el) return;
+		const ro = new ResizeObserver(([entry]) => { vsViewportH = entry.contentRect.height; });
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
+
+	$effect(() => {
+		if (!vsActive || vsStreaming || !cur || cur.rows.length === 0 || vsColsLocked) return;
+		requestAnimationFrame(vsMeasureCols);
+	});
+
+	$effect(() => {
+		if (!vsActive || !vsScrollEl) return;
+		requestAnimationFrame(() => {
+			const row = vsScrollEl?.querySelector('tbody tr:not(.vs-spacer)');
+			if (!row) return;
+			const h = row.getBoundingClientRect().height;
+			if (h > 0 && Math.abs(h - vsRowH) > 1) vsRowH = Math.round(h);
+		});
+	});
+
 	function openCellCtx(e, row, col, value) {
 		e.preventDefault();
 		const sel = (typeof window !== 'undefined' ? window.getSelection()?.toString() : '') ?? '';
@@ -377,6 +457,7 @@
 		}
 
 		pending = true;
+		vsReset();
 		const collected = /** @type {StatementResult[]} */ ([]);
 		try {
 			for (const stmt of stmts) {
@@ -385,6 +466,13 @@
 						// SELECT 走流式响应
 						const accRows = [];
 						const colSet = new Set();
+						vsStreaming = true;
+						// 先占位，流式过程中增量更新
+						const idx = collected.length;
+						collected.push({ sql: stmt, success: true, error: null, rows: [], columns: [], affectedRows: null });
+						results = [...collected];
+						activeResultIdx = idx;
+
 						const resp = await executeSqlStreaming(schemaConn, stmt, (data) => {
 							if (data && typeof data === 'object') {
 								const d = /** @type {Record<string, unknown>} */ (data);
@@ -395,13 +483,29 @@
 										for (const k of Object.keys(row)) colSet.add(k);
 									}
 								}
+								// 每 100 行增量刷新 UI
+								if (accRows.length % 100 === 0) {
+									const cols = [...colSet];
+									collected[idx] = { ...collected[idx], rows: [...accRows], columns: cols };
+									results = [...collected];
+									// 超过阈值启用虚拟滚动
+									if (!vsActive && accRows.length > VS_THRESHOLD) {
+										vsActive = true;
+									}
+								}
 							}
 						});
+						vsStreaming = false;
 						if (!resp.success) {
-							collected.push({ sql: stmt, success: false, error: resp.error ?? get(t)('sql.exec_failed'), rows: [], columns: [], affectedRows: null });
+							collected[idx] = { sql: stmt, success: false, error: resp.error ?? get(t)('sql.exec_failed'), rows: [], columns: [], affectedRows: null };
 						} else {
-							collected.push({ sql: stmt, success: true, error: null, rows: accRows, columns: [...colSet], affectedRows: null });
+							const cols = [...colSet];
+							collected[idx] = { sql: stmt, success: true, error: null, rows: accRows, columns: cols, affectedRows: null };
 						}
+						results = [...collected];
+						// 最终确认虚拟模式 + 触发列宽测量
+						if (accRows.length > VS_THRESHOLD && !vsActive) vsActive = true;
+						if (vsActive) { vsColsLocked = false; vsColWidths = []; }
 					} else {
 						// 非 SELECT 走普通响应
 						const resp = await executeSql(schemaConn, stmt);
@@ -492,7 +596,6 @@
 		<hr style="border: none; border-top: 1px solid var(--md-outline-variant); margin: 0;" />
 
 		{#if results.length > 0}
-			{@const cur = results[activeResultIdx] ?? results[0]}
 			<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
 				<nav
 					class="flex shrink-0 items-end gap-px overflow-x-auto"
@@ -503,7 +606,7 @@
 							type="button"
 							class="result-tab"
 							aria-selected={activeResultIdx === i}
-							onclick={() => (activeResultIdx = i)}
+							onclick={() => { activeResultIdx = i; vsReset(); }}
 							title={r.sql.length > 200 ? r.sql.slice(0, 200) + '…' : r.sql}
 							style:background={activeResultIdx === i ? 'var(--md-surface)' : 'transparent'}
 							style:color={activeResultIdx === i ? 'var(--md-on-surface)' : 'var(--md-on-surface-variant)'}
@@ -537,17 +640,27 @@
 						{$t('sql.affected_rows', { count: cur.affectedRows })}
 					</div>
 				{:else if cur.rows.length > 0 && cur.columns.length > 0}
-					<div class="min-h-0 flex-1 overflow-auto" style="border-top: 1px solid var(--md-outline-variant);">
-						<table class="min-w-full text-left text-xs">
+					<div
+						class="min-h-0 flex-1 overflow-auto"
+						style="border-top: 1px solid var(--md-outline-variant);"
+						bind:this={vsScrollEl}
+						onscroll={vsOnScroll}
+						bind:clientHeight={vsViewportH}
+					>
+						<table
+							class="min-w-full text-left text-xs"
+							style:table-layout={vsColsLocked ? 'fixed' : 'auto'}
+						>
 							<thead
 								class="sticky top-0"
 								style="background: var(--md-surface-container); color: var(--md-on-surface-variant);"
 							>
 								<tr>
-									{#each cur.columns as col (col)}
+									{#each cur.columns as col, ci (col)}
 										<th
-											class="px-3 py-2 font-medium font-mono whitespace-nowrap"
+											class="px-3 py-2 font-medium font-mono truncate"
 											style="border-bottom: 1px solid var(--md-outline-variant);"
+											style:width={vsColsLocked ? `${vsColWidths[ci] ?? 120}px` : undefined}
 											oncontextmenu={(e) => openHeaderCtx(e, col)}
 										>
 											{col}
@@ -555,25 +668,55 @@
 									{/each}
 								</tr>
 							</thead>
-							<tbody>
-								{#each cur.rows as row, i (i)}
-									<tr style:background={i % 2 === 0 ? 'transparent' : 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}>
-										{#each cur.columns as col (col)}
-											<td
-												class="max-w-[24rem] truncate px-3 py-1.5 font-mono"
-												style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);"
-												oncontextmenu={(e) => openCellCtx(e, row, col, row[col])}
-											>
-												{#if isLob(row[col])}
-													<span class="italic" style="color: var(--md-on-surface-variant);">{row[col]}</span>
-												{:else}
-													{renderCell(row[col])}
-												{/if}
-											</td>
-										{/each}
+							{#if vsRange}
+								<tbody>
+									<tr class="vs-spacer" style:height="{vsRange.offsetY}px">
+										<td colspan={cur.columns.length} style="padding: 0; border: none;"></td>
 									</tr>
-								{/each}
-							</tbody>
+									{#each vsVisRows as row, vi (vsRange.start + vi)}
+										{@const i = vsRange.start + vi}
+										<tr style:background={i % 2 === 0 ? 'transparent' : 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}>
+											{#each cur.columns as col, ci (col)}
+												<td
+													class="truncate px-3 py-1.5 font-mono"
+													style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);"
+													style:width={vsColsLocked ? `${vsColWidths[ci] ?? 120}px` : undefined}
+													oncontextmenu={(e) => openCellCtx(e, row, col, row[col])}
+												>
+													{#if isLob(row[col])}
+														<span class="italic" style="color: var(--md-on-surface-variant);">{row[col]}</span>
+													{:else}
+														{renderCell(row[col])}
+													{/if}
+												</td>
+											{/each}
+										</tr>
+									{/each}
+									<tr class="vs-spacer" style:height="{vsRange.bottomPad}px">
+										<td colspan={cur.columns.length} style="padding: 0; border: none;"></td>
+									</tr>
+								</tbody>
+							{:else}
+								<tbody>
+									{#each cur.rows as row, i (i)}
+										<tr style:background={i % 2 === 0 ? 'transparent' : 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}>
+											{#each cur.columns as col (col)}
+												<td
+													class="max-w-[24rem] truncate px-3 py-1.5 font-mono"
+													style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);"
+													oncontextmenu={(e) => openCellCtx(e, row, col, row[col])}
+												>
+													{#if isLob(row[col])}
+														<span class="italic" style="color: var(--md-on-surface-variant);">{row[col]}</span>
+													{:else}
+														{renderCell(row[col])}
+													{/if}
+												</td>
+											{/each}
+										</tr>
+									{/each}
+								</tbody>
+							{/if}
 						</table>
 					</div>
 					<p class="px-3 py-1.5 text-right text-xs" style="color: var(--md-on-surface-variant); border-top: 1px solid var(--md-outline-variant);">{$t('sql.rows_result', { count: cur.rows.length })}</p>

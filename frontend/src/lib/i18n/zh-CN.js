@@ -157,11 +157,11 @@ export const zhCN = {
 	// ---- SQL 控制台 ----
 	'sql.title': 'SQL 控制台',
 	'sql.no_db': '(未选库)',
-	'sql.format_tooltip': '格式化 (Ctrl/Cmd + Shift + F)',
+	'sql.format_tooltip': '格式化 (Alt + Shift + F)',
 	'sql.format': '格式化',
 	'sql.run_tooltip': '执行 (Ctrl/Cmd + Enter)',
 	'sql.run_aria': '执行',
-	'sql.placeholder': 'SELECT id, name FROM users LIMIT 10; ...\nCtrl/Cmd + Enter 执行（有选中则执行选中部分）\nCtrl/Cmd + Shift + F 格式化',
+	'sql.placeholder': 'SELECT id, name FROM users LIMIT 10; ...\nCtrl/Cmd + Enter 执行（有选中则执行选中部分）\nAlt + Shift + F 格式化',
 	'sql.exec_failed': '执行失败',
 	'sql.affected_rows': '受影响行数：{count}',
 	'sql.rows_result': '{count} 行结果',

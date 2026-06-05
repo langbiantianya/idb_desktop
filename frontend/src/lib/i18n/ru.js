@@ -157,11 +157,11 @@ export const ru = {
 	// ---- SQL-консоль ----
 	'sql.title': 'SQL-консоль',
 	'sql.no_db': '(База данных не выбрана)',
-	'sql.format_tooltip': 'Форматировать (Ctrl/Cmd + Shift + F)',
+	'sql.format_tooltip': 'Форматировать (Alt + Shift + F)',
 	'sql.format': 'Форматировать',
 	'sql.run_tooltip': 'Выполнить (Ctrl/Cmd + Enter)',
 	'sql.run_aria': 'Выполнить',
-	'sql.placeholder': 'SELECT id, name FROM users LIMIT 10; ...\nCtrl/Cmd + Enter для выполнения (выделенная часть, если есть)\nCtrl/Cmd + Shift + F для форматирования',
+	'sql.placeholder': 'SELECT id, name FROM users LIMIT 10; ...\nCtrl/Cmd + Enter для выполнения (выделенная часть, если есть)\nAlt + Shift + F для форматирования',
 	'sql.exec_failed': 'Ошибка выполнения',
 	'sql.affected_rows': 'Затронуто строк: {count}',
 	'sql.rows_result': '{count} строк в результате',
