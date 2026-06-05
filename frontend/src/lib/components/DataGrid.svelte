@@ -20,6 +20,7 @@
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import RowEditor from './RowEditor.svelte';
 	import MonacoInput from './MonacoInput.svelte';
+	import MdButton from './MdButton.svelte';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
@@ -541,8 +542,8 @@
 				{/if}
 			</h2>
 			<div class="flex shrink-0 items-center gap-1.5 ml-auto">
-				<button
-					class="md-icon-btn"
+				<MdButton
+					variant="icon"
 					title={$t('datagrid.refresh')}
 					onclick={() => {
 						if (pageSize === 0) loadStreaming();
@@ -551,18 +552,18 @@
 					disabled={pending || streaming}
 				>
 					↻
-				</button>
+				</MdButton>
 				{#if readOnly}
 					<span class="md-chip" title={$t('datagrid.ro_tooltip')}>{$t('datagrid.ro_readonly')}</span>
 				{:else}
-					<button
-						class="md-btn-filled"
-						style="padding: 0.125rem 0.5rem; font-size: 0.75rem;"
+					<MdButton
+						variant="filled"
+						size="sm"
 						onclick={() => (inserting = true)}
 						disabled={columns.length === 0 && columnMeta.length === 0}
 					>
 						{$t('datagrid.insert')}
-					</button>
+					</MdButton>
 				{/if}
 			</div>
 		</div>
@@ -691,20 +692,21 @@
 										style="border-bottom: 1px solid var(--md-outline-variant);"
 									>
 										<div class="flex gap-2 text-xs">
-											<button
-												class="md-btn-text"
-												style="padding: 0.125rem 0.5rem;"
+											<MdButton
+												variant="text"
+												size="sm"
 												onclick={() => (editing = row)}
 											>
 												{$t('common.edit')}
-											</button>
-											<button
-												class="md-btn-text"
-												style="padding: 0.125rem 0.5rem; color: var(--md-error);"
+											</MdButton>
+											<MdButton
+												variant="text"
+												size="sm"
+												class="!text-[var(--md-error)]"
 												onclick={() => (confirmDelete = row)}
 											>
 												{$t('common.delete')}
-											</button>
+											</MdButton>
 										</div>
 									</td>
 								{/if}
@@ -757,20 +759,21 @@
 										style="border-bottom: 1px solid var(--md-outline-variant);"
 									>
 										<div class="flex gap-2 text-xs">
-											<button
-												class="md-btn-text"
-												style="padding: 0.125rem 0.5rem;"
+											<MdButton
+												variant="text"
+												size="sm"
 												onclick={() => (editing = row)}
 											>
 												{$t('common.edit')}
-											</button>
-											<button
-												class="md-btn-text"
-												style="padding: 0.125rem 0.5rem; color: var(--md-error);"
+											</MdButton>
+											<MdButton
+												variant="text"
+												size="sm"
+												class="!text-[var(--md-error)]"
 												onclick={() => (confirmDelete = row)}
 											>
 												{$t('common.delete')}
-											</button>
+											</MdButton>
 										</div>
 									</td>
 								{/if}
@@ -787,14 +790,14 @@
 	>
 		<div class="flex items-center gap-1.5">
 			{#if pageSize > 0}
-				<button
-					class="md-icon-btn"
+				<MdButton
+					variant="icon"
 					title={$t('datagrid.prev_page')}
 					onclick={() => gotoPage(page - 1)}
 					disabled={pending || page <= 1}
 				>
 					◀
-				</button>
+				</MdButton>
 				{#if totalPages !== null && totalPages > 1}
 					<select
 						class="text-xs"
@@ -811,14 +814,14 @@
 						{pageText(page, totalPages ?? 1)}
 					</span>
 				{/if}
-				<button
-					class="md-icon-btn"
+				<MdButton
+					variant="icon"
 					title={$t('datagrid.next_page')}
 					onclick={() => gotoPage(page + 1)}
 					disabled={pending || (totalPages !== null ? page >= totalPages : rows.length < pageSize)}
 				>
 					▶
-				</button>
+				</MdButton>
 			{/if}
 		</div>
 		<div class="flex items-center gap-1.5">

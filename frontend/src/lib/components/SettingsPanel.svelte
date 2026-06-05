@@ -13,6 +13,7 @@
 		resolvedTheme,
 		memRefreshSeconds,
 		jvmMaxMemoryMB,
+		systemMemoryMB,
 		setTheme,
 		setLightTheme,
 		setDarkTheme,
@@ -26,6 +27,7 @@
 	import { get } from 'svelte/store';
 	import { ok, err } from '$lib/stores/toasts.js';
 	import ThemeToggle from './ThemeToggle.svelte';
+	import MdButton from './MdButton.svelte';
 
 	/** @type {import('$lib/api/themes.js').ThemeInfo[]} */
 	let themes = $state([]);
@@ -38,22 +40,34 @@
 
 	let restarting = $state(false);
 
+	let jvmMax = $derived($systemMemoryMB > 0 ? Math.floor($systemMemoryMB / 2) : 4096);
+	let jvmPct = $derived(jvmMax > 64 ? (($jvmMaxMemoryMB - 64) / (jvmMax - 64)) * 100 : 0);
+
 	$effect(() => {
 		listThemes().then((th) => {
 			themes = th;
 			loading = false;
 		});
-		getSystemInfo().then((resp) => {
-			if (resp.success && resp.data) {
-				sysInfo = /** @type {Record<string, unknown>} */ (resp.data);
-			} else {
+
+		// 系统信息每秒轮询
+		async function fetchSys() {
+			try {
+				const resp = await getSystemInfo();
+				if (resp.success && resp.data) {
+					sysInfo = /** @type {Record<string, unknown>} */ (resp.data);
+					sysError = false;
+				} else {
+					sysError = true;
+				}
+			} catch {
 				sysError = true;
+			} finally {
+				sysLoading = false;
 			}
-			sysLoading = false;
-		}).catch(() => {
-			sysError = true;
-			sysLoading = false;
-		});
+		}
+		fetchSys();
+		const timer = setInterval(fetchSys, 1000);
+		return () => clearInterval(timer);
 	});
 
 	let lightThemes = $derived(themes.filter((th) => th.type === 'light'));
@@ -90,27 +104,37 @@
 	}
 </script>
 
-<div class="flex h-full flex-col overflow-hidden" style="background: var(--md-background); color: var(--md-on-background);">
+<div
+	class="flex h-full flex-col overflow-hidden"
+	style="background: var(--md-background); color: var(--md-on-background);"
+>
 	<header
 		class="flex shrink-0 items-center gap-3 px-4 py-3"
 		style="background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant);"
 	>
-		<button class="md-icon-btn" onclick={onClose} title={$t('settings.back')}>
+		<MdButton variant="icon" onclick={onClose} title={$t('settings.back')}>
 			<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-				<path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+				<path
+					d="M12.5 15L7.5 10L12.5 5"
+					stroke="currentColor"
+					stroke-width="1.5"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
 			</svg>
-		</button>
+		</MdButton>
 		<h1 class="text-lg font-medium">{$t('settings.title')}</h1>
 	</header>
 
 	<main class="flex-1 overflow-auto px-6 py-6">
 		<div class="mx-auto max-w-lg space-y-8">
-
 			<!-- 语言 -->
 			<section class="space-y-3">
-				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">{$t('settings.language')}</h2>
+				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">
+					{$t('settings.language')}
+				</h2>
 				<select
-					class="md-input w-full text-sm"
+					class="w-full md-input text-sm"
 					value={$locale}
 					onchange={(e) => setLocale(e.currentTarget.value)}
 				>
@@ -122,12 +146,16 @@
 
 			<!-- 主题模式 -->
 			<section class="space-y-3">
-				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">{$t('settings.theme_mode')}</h2>
+				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">
+					{$t('settings.theme_mode')}
+				</h2>
 				<div class="flex items-center gap-3">
 					<ThemeToggle />
 					<span class="text-xs" style="color: var(--md-on-surface-variant);">
 						{#if $themeMode === 'auto'}
-							{$t('settings.follow_system', { theme: $resolvedTheme === 'dark' ? $t('settings.dark') : $t('settings.light') })}
+							{$t('settings.follow_system', {
+								theme: $resolvedTheme === 'dark' ? $t('settings.dark') : $t('settings.light')
+							})}
 						{:else if $themeMode === 'light'}
 							{$t('settings.light_mode')}
 						{:else}
@@ -139,12 +167,16 @@
 
 			<!-- 浅色主题 -->
 			<section class="space-y-3">
-				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">{$t('settings.light_theme')}</h2>
+				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">
+					{$t('settings.light_theme')}
+				</h2>
 				{#if loading}
-					<p class="text-xs animate-pulse" style="color: var(--md-on-surface-variant);">{$t('common.loading')}</p>
+					<p class="animate-pulse text-xs" style="color: var(--md-on-surface-variant);">
+						{$t('common.loading')}
+					</p>
 				{:else}
 					<select
-						class="md-input w-full text-sm"
+						class="w-full md-input text-sm"
 						value={$lightThemeId}
 						onchange={(e) => setLightTheme(e.currentTarget.value)}
 					>
@@ -156,7 +188,9 @@
 					{#if lightThemes.length === 0}
 						<p class="text-xs" style="color: var(--md-on-surface-variant);">
 							{$t('settings.theme_help', { mode: $t('settings.light') })}
-							<code class="font-mono text-[11px]" style="color: var(--md-primary);">~/.config/idb/theme/</code>
+							<code class="font-mono text-[11px]" style="color: var(--md-primary);"
+								>~/.config/idb/theme/</code
+							>
 						</p>
 					{/if}
 				{/if}
@@ -164,12 +198,16 @@
 
 			<!-- 深色主题 -->
 			<section class="space-y-3">
-				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">{$t('settings.dark_theme')}</h2>
+				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">
+					{$t('settings.dark_theme')}
+				</h2>
 				{#if loading}
-					<p class="text-xs animate-pulse" style="color: var(--md-on-surface-variant);">{$t('common.loading')}</p>
+					<p class="animate-pulse text-xs" style="color: var(--md-on-surface-variant);">
+						{$t('common.loading')}
+					</p>
 				{:else}
 					<select
-						class="md-input w-full text-sm"
+						class="w-full md-input text-sm"
 						value={$darkThemeId}
 						onchange={(e) => setDarkTheme(e.currentTarget.value)}
 					>
@@ -181,21 +219,58 @@
 					{#if darkThemes.length === 0}
 						<p class="text-xs" style="color: var(--md-on-surface-variant);">
 							{$t('settings.theme_help', { mode: $t('settings.dark') })}
-							<code class="font-mono text-[11px]" style="color: var(--md-primary);">~/.config/idb/theme/</code>
+							<code class="font-mono text-[11px]" style="color: var(--md-primary);"
+								>~/.config/idb/theme/</code
+							>
 						</p>
 					{/if}
 				{/if}
 			</section>
+			<!-- 主题文件说明 -->
+			<section
+				class="rounded-lg p-4 text-xs leading-relaxed"
+				style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant); color: var(--md-on-surface-variant);"
+			>
+				<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">
+					{$t('settings.custom_theme_format')}
+				</h3>
+				<pre
+					class="overflow-auto font-mono text-[11px] leading-relaxed"
+					style="color: var(--md-on-surface-variant);">{`/* @idb-theme
+   name: Cyberpunk
+   type: dark
+*/
 
+:root {
+  --md-primary: #00f0ff;
+  --md-on-primary: #00363b;
+  /* ... */
+}`}</pre>
+				<p class="mt-2">
+					{$t('settings.file_path')}<code
+						class="font-mono text-[11px]"
+						style="color: var(--md-primary);">~/.config/idb/theme/*.css</code
+					>
+				</p>
+				<p class="mt-1">
+					<code class="font-mono text-[11px]">type</code>
+					{$t('settings.type_hint')}
+					{$t('settings.vars_hint')}
+				</p>
+			</section>
 			<!-- 性能设置 -->
 			<section class="space-y-3">
-				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">{$t('perf.title')}</h2>
+				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">
+					{$t('perf.title')}
+				</h2>
 				<div class="space-y-4">
 					<!-- 内存刷新间隔 -->
 					<div class="space-y-1">
-						<label class="text-xs" style="color: var(--md-on-surface-variant);">{$t('perf.mem_refresh')}</label>
+						<label class="text-xs" style="color: var(--md-on-surface-variant);"
+							>{$t('perf.mem_refresh')}</label
+						>
 						<select
-							class="md-input w-full text-sm"
+							class="w-full md-input text-sm"
 							value={$memRefreshSeconds}
 							onchange={(e) => setMemRefresh(Number(e.currentTarget.value))}
 						>
@@ -207,26 +282,41 @@
 
 					<!-- JVM 最大堆内存 -->
 					<div class="space-y-1">
-						<label class="text-xs" style="color: var(--md-on-surface-variant);">{$t('perf.jvm_memory')}</label>
-						<div class="flex items-center gap-2">
+						<label class="text-xs" style="color: var(--md-on-surface-variant);"
+							>{$t('perf.jvm_memory')}</label
+						>
+						<div class="flex items-center gap-3">
+							<span
+								class="w-10 shrink-0 text-right font-mono text-xs"
+								style="color: var(--md-on-surface);">64</span
+							>
 							<input
-								type="number"
-								class="md-input w-28 text-sm"
+								type="range"
+								class="jvm-slider flex-1"
 								min="64"
-								max="4096"
+								max={jvmMax}
 								step="64"
 								value={$jvmMaxMemoryMB}
-								onchange={(e) => setJvmMaxMemory(Math.max(64, Math.min(4096, Number(e.currentTarget.value))))}
+								oninput={(e) => setJvmMaxMemory(Number(e.currentTarget.value))}
+								style:background="linear-gradient(to right, var(--md-primary) {jvmPct}%, var(--md-surface-container-highest) {jvmPct}%)"
 							/>
-							<span class="text-xs" style="color: var(--md-on-surface-variant);">MB</span>
-							<button
-								class="md-btn-tonal ml-auto text-xs"
-								style="padding: 0.25rem 0.75rem;"
+							<span
+								class="w-10 shrink-0 font-mono text-xs"
+								style="color: var(--md-on-surface-variant);">{jvmMax}</span
+							>
+							<span
+								class="w-16 shrink-0 text-right font-mono text-sm font-medium"
+								style="color: var(--md-primary);">{$jvmMaxMemoryMB} MB</span
+							>
+							<MdButton
+								variant="tonal"
+								size="sm"
+								class="ml-auto"
 								onclick={doRestartEngine}
 								disabled={restarting}
 							>
 								{restarting ? $t('perf.jvm_restarting') : $t('perf.jvm_restart')}
-							</button>
+							</MdButton>
 						</div>
 						<p class="text-[11px]" style="color: var(--md-on-surface-variant);">
 							{$t('perf.jvm_memory_hint')}
@@ -235,85 +325,224 @@
 				</div>
 			</section>
 
-			<!-- 主题文件说明 -->
-			<section
-				class="rounded-lg p-4 text-xs leading-relaxed"
-				style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant); color: var(--md-on-surface-variant);"
-			>
-				<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">{$t('settings.custom_theme_format')}</h3>
-				<pre class="overflow-auto font-mono text-[11px] leading-relaxed" style="color: var(--md-on-surface-variant);">{`/* @idb-theme
-   name: Cyberpunk
-   type: dark
-*/
-
-:root {
-  --md-primary: #00f0ff;
-  --md-on-primary: #00363b;
-  /* ... */
-}`}</pre>
-				<p class="mt-2">
-					{$t('settings.file_path')}<code class="font-mono text-[11px]" style="color: var(--md-primary);">~/.config/idb/theme/*.css</code>
-				</p>
-				<p class="mt-1">
-					<code class="font-mono text-[11px]">type</code> {$t('settings.type_hint')}
-					{$t('settings.vars_hint')}
-				</p>
-			</section>
-
 			<!-- 系统信息 -->
 			<section class="space-y-3">
-				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">{$t('sysinfo.title')}</h2>
+				<h2 class="text-sm font-medium" style="color: var(--md-on-surface-variant);">
+					{$t('sysinfo.title')}
+				</h2>
 				{#if sysLoading}
-					<p class="text-xs animate-pulse" style="color: var(--md-on-surface-variant);">{$t('sysinfo.loading')}</p>
+					<p class="animate-pulse text-xs" style="color: var(--md-on-surface-variant);">
+						{$t('sysinfo.loading')}
+					</p>
 				{:else if sysError}
 					<p class="text-xs" style="color: var(--md-error);">{$t('sysinfo.error')}</p>
 				{:else if sysInfo}
 					{@const mem = /** @type {Record<string, number>} */ (sysInfo.memory)}
 					<div class="grid grid-cols-2 gap-3 text-xs">
-						<div class="col-span-2 rounded-lg p-3" style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);">
-							<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">{$t('sysinfo.jvm')}</h3>
+						<div
+							class="col-span-2 rounded-lg p-3"
+							style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);"
+						>
+							<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">
+								{$t('sysinfo.jvm')}
+							</h3>
 							<div class="space-y-1" style="color: var(--md-on-surface-variant);">
-								<p>{$t('sysinfo.jvm_version')}: <span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.jvmVersion}</span></p>
-								<p>{$t('sysinfo.jvm_vendor')}: <span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.jvmVendor}</span></p>
-								<p>{$t('sysinfo.jvm_name')}: <span class="font-mono text-[11px]" style="color: var(--md-on-surface);">{sysInfo.jvmName}</span></p>
+								<p>
+									{$t('sysinfo.jvm_version')}:
+									<span class="font-mono" style="color: var(--md-on-surface);"
+										>{sysInfo.jvmVersion}</span
+									>
+								</p>
+								<p>
+									{$t('sysinfo.jvm_vendor')}:
+									<span class="font-mono" style="color: var(--md-on-surface);"
+										>{sysInfo.jvmVendor}</span
+									>
+								</p>
+								<p>
+									{$t('sysinfo.jvm_name')}:
+									<span class="font-mono text-[11px]" style="color: var(--md-on-surface);"
+										>{sysInfo.jvmName}</span
+									>
+								</p>
 							</div>
 						</div>
-						<div class="rounded-lg p-3" style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);">
-							<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">{$t('sysinfo.os')}</h3>
+						<div
+							class="rounded-lg p-3"
+							style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);"
+						>
+							<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">
+								{$t('sysinfo.os')}
+							</h3>
 							<div class="space-y-1" style="color: var(--md-on-surface-variant);">
-								<p>{$t('sysinfo.os_name')}: <span style="color: var(--md-on-surface);">{sysInfo.osName}</span></p>
-								<p>{$t('sysinfo.os_arch')}: <span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.osArch}</span></p>
-								<p>{$t('sysinfo.os_version')}: <span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.osVersion}</span></p>
+								<p>
+									{$t('sysinfo.os_name')}:
+									<span style="color: var(--md-on-surface);">{sysInfo.osName}</span>
+								</p>
+								<p>
+									{$t('sysinfo.os_arch')}:
+									<span class="font-mono" style="color: var(--md-on-surface);"
+										>{sysInfo.osArch}</span
+									>
+								</p>
+								<p>
+									{$t('sysinfo.os_version')}:
+									<span class="font-mono" style="color: var(--md-on-surface);"
+										>{sysInfo.osVersion}</span
+									>
+								</p>
 							</div>
 						</div>
-						<div class="rounded-lg p-3" style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);">
-							<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">{$t('sysinfo.cpu')}</h3>
+						<div
+							class="rounded-lg p-3"
+							style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);"
+						>
+							<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">
+								{$t('sysinfo.cpu')}
+							</h3>
 							<div class="space-y-1" style="color: var(--md-on-surface-variant);">
-								<p class="font-mono text-lg" style="color: var(--md-on-surface);">{sysInfo.availableProcessors}</p>
-								<p>{$t('sysinfo.uptime')}: <span class="font-mono" style="color: var(--md-on-surface);">{formatUptime(/** @type {number} */ (sysInfo.uptime))}</span></p>
-								<p>{$t('sysinfo.pid')}: <span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.pid}</span></p>
+								<p class="font-mono text-lg" style="color: var(--md-on-surface);">
+									{sysInfo.availableProcessors}
+								</p>
+								<p>
+									{$t('sysinfo.uptime')}:
+									<span class="font-mono" style="color: var(--md-on-surface);"
+										>{formatUptime(/** @type {number} */ (sysInfo.uptime))}</span
+									>
+								</p>
+								<p>
+									{$t('sysinfo.pid')}:
+									<span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.pid}</span>
+								</p>
 							</div>
 						</div>
-						<div class="col-span-2 rounded-lg p-3" style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);">
-							<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">{$t('sysinfo.memory')}</h3>
+						<div
+							class="col-span-2 rounded-lg p-3"
+							style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);"
+						>
+							<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">
+								{$t('sysinfo.memory')}
+							</h3>
 							<div class="grid grid-cols-2 gap-2" style="color: var(--md-on-surface-variant);">
-								<p>{$t('sysinfo.mem_max')}: <span class="font-mono" style="color: var(--md-on-surface);">{formatBytes(mem.max)}</span></p>
-								<p>{$t('sysinfo.mem_allocated')}: <span class="font-mono" style="color: var(--md-on-surface);">{formatBytes(mem.total)}</span></p>
-								<p>{$t('sysinfo.mem_used')}: <span class="font-mono" style="color: var(--md-on-surface);">{formatBytes(mem.used)}</span></p>
-								<p>{$t('sysinfo.mem_free')}: <span class="font-mono" style="color: var(--md-on-surface);">{formatBytes(mem.free)}</span></p>
+								<p>
+									{$t('sysinfo.mem_max')}:
+									<span class="font-mono" style="color: var(--md-on-surface);"
+										>{formatBytes(mem.max)}</span
+									>
+								</p>
+								<p>
+									{$t('sysinfo.mem_allocated')}:
+									<span class="font-mono" style="color: var(--md-on-surface);"
+										>{formatBytes(mem.total)}</span
+									>
+								</p>
+								<p>
+									{$t('sysinfo.mem_used')}:
+									<span class="font-mono" style="color: var(--md-on-surface);"
+										>{formatBytes(mem.used)}</span
+									>
+								</p>
+								<p>
+									{$t('sysinfo.mem_free')}:
+									<span class="font-mono" style="color: var(--md-on-surface);"
+										>{formatBytes(mem.free)}</span
+									>
+								</p>
 							</div>
-							<div class="mt-2 h-2 w-full overflow-hidden rounded-full" style="background: var(--md-surface-container-highest);">
-								<div class="h-full rounded-full transition-all duration-500"
-									style="width: {Math.round(mem.used / mem.total * 100)}%; background: var(--md-primary);"></div>
+							<div
+								class="mt-2 h-2 w-full overflow-hidden rounded-full"
+								style="background: var(--md-surface-container-highest);"
+							>
+								<div
+									class="h-full rounded-full transition-all duration-500"
+									style="width: {Math.round(
+										(mem.used / mem.total) * 100
+									)}%; background: var(--md-primary);"
+								></div>
 							</div>
 							<p class="mt-1 text-[11px]" style="color: var(--md-on-surface-variant);">
-								{Math.round(mem.used / mem.total * 100)}% · {formatBytes(mem.used)} / {formatBytes(mem.total)}
+								{Math.round((mem.used / mem.total) * 100)}% · {formatBytes(mem.used)} / {formatBytes(
+									mem.total
+								)}
 							</p>
 						</div>
 					</div>
 				{/if}
 			</section>
-
 		</div>
 	</main>
 </div>
+
+<style>
+	/* ── MD3 Slider ── https://m3.material.io/components/sliders/specs ── */
+	.jvm-slider {
+		-webkit-appearance: none;
+		appearance: none;
+		height: 4px;
+		border-radius: 2px;
+		outline: none;
+		cursor: pointer;
+		transition: opacity 0.2s;
+	}
+	/* WebKit — Chrome / Edge / Safari */
+	.jvm-slider::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		appearance: none;
+		width: 20px;
+		height: 20px;
+		border-radius: 50%;
+		background: var(--md-primary);
+		cursor: pointer;
+		box-shadow:
+			0 1px 3px 1px rgba(0, 0, 0, 0.15),
+			0 1px 2px rgba(0, 0, 0, 0.3);
+		transition: box-shadow 0.2s;
+	}
+	.jvm-slider::-webkit-slider-thumb:hover {
+		box-shadow:
+			0 0 0 10px color-mix(in srgb, var(--md-primary) 12%, transparent),
+			0 1px 3px 1px rgba(0, 0, 0, 0.15),
+			0 1px 2px rgba(0, 0, 0, 0.3);
+	}
+	.jvm-slider:focus-visible::-webkit-slider-thumb {
+		box-shadow:
+			0 0 0 12px color-mix(in srgb, var(--md-primary) 18%, transparent),
+			0 1px 3px 1px rgba(0, 0, 0, 0.15),
+			0 1px 2px rgba(0, 0, 0, 0.3);
+	}
+	.jvm-slider:active::-webkit-slider-thumb {
+		box-shadow:
+			0 0 0 14px color-mix(in srgb, var(--md-primary) 24%, transparent),
+			0 1px 3px 1px rgba(0, 0, 0, 0.15),
+			0 1px 2px rgba(0, 0, 0, 0.3);
+	}
+	/* Firefox */
+	.jvm-slider::-moz-range-thumb {
+		width: 20px;
+		height: 20px;
+		border-radius: 50%;
+		background: var(--md-primary);
+		border: none;
+		cursor: pointer;
+		box-shadow:
+			0 1px 3px 1px rgba(0, 0, 0, 0.15),
+			0 1px 2px rgba(0, 0, 0, 0.3);
+		transition: box-shadow 0.2s;
+	}
+	.jvm-slider::-moz-range-thumb:hover {
+		box-shadow:
+			0 0 0 10px color-mix(in srgb, var(--md-primary) 12%, transparent),
+			0 1px 3px 1px rgba(0, 0, 0, 0.15),
+			0 1px 2px rgba(0, 0, 0, 0.3);
+	}
+	.jvm-slider::-moz-range-track {
+		height: 4px;
+		border-radius: 2px;
+		background: var(--md-surface-container-highest);
+	}
+	.jvm-slider::-moz-range-progress {
+		height: 4px;
+		border-radius: 2px;
+		background: var(--md-primary);
+	}
+</style>

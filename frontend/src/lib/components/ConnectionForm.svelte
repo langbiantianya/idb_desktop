@@ -14,6 +14,7 @@
 	import { get } from 'svelte/store';
 	import ThemeToggle from './ThemeToggle.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
+	import MdButton from './MdButton.svelte';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
@@ -144,15 +145,15 @@
 		>
 			<header class="flex items-center justify-between border-b px-3 py-2.5" style="border-color: var(--md-outline-variant);">
 				<span class="text-xs font-medium" style="color: var(--md-on-surface-variant);">{$t('conn.saved')}</span>
-				<button
+				<MdButton
 					type="button"
-					class="md-icon-btn"
+					variant="icon"
 					title={$t('conn.new_blank')}
-					aria-label={$t('conn.new_aria')}
+					ariaLabel={$t('conn.new_aria')}
 					onclick={newProfile}
 				>
 					＋
-				</button>
+				</MdButton>
 			</header>
 			<div class="flex-1 overflow-auto p-1">
 				{#if saved.length === 0}
@@ -189,9 +190,10 @@
 									{#if s.hasPassword}
 										<span class="md-chip" title={$t('conn.password_saved')}>PW</span>
 									{/if}
-									<button
+									<MdButton
 										type="button"
-										class="md-icon-btn opacity-0 group-hover:opacity-100"
+										variant="icon"
+										class="opacity-0 group-hover:opacity-100"
 										style="width: 1.25rem; height: 1.25rem;"
 										title={$t('common.delete')}
 										onclick={(e) => {
@@ -200,7 +202,7 @@
 										}}
 									>
 										<span style="color: var(--md-error); font-size: 0.75rem;">✕</span>
-									</button>
+									</MdButton>
 								</div>
 							</li>
 						{/each}
@@ -219,12 +221,12 @@
 				</div>
 				<div class="flex items-center gap-1">
 					<ThemeToggle />
-					<button class="md-icon-btn" onclick={openSettings} title={$t('workspace.settings')}>
+					<MdButton variant="icon" onclick={openSettings} title={$t('workspace.settings')}>
 						<svg width="18" height="18" viewBox="0 0 20 20" fill="none">
 							<path d="M8.325 2.317a1.417 1.417 0 013.35 0 1.417 1.417 0 002.142.866 1.417 1.417 0 012.368 2.368 1.417 1.417 0 00.866 2.142 1.417 1.417 0 010 3.35 1.417 1.417 0 00-.866 2.142 1.417 1.417 0 01-2.368 2.368 1.417 1.417 0 00-2.142.866 1.417 1.417 0 01-3.35 0 1.417 1.417 0 00-2.142-.866 1.417 1.417 0 01-2.368-2.368 1.417 1.417 0 00-.866-2.142 1.417 1.417 0 010-3.35 1.417 1.417 0 00.866-2.142 1.417 1.417 0 012.368-2.368 1.417 1.417 0 002.142-.866z" stroke="currentColor" stroke-width="1.3"/>
 							<circle cx="10" cy="10" r="2.5" stroke="currentColor" stroke-width="1.3"/>
 						</svg>
-					</button>
+					</MdButton>
 				</div>
 			</div>
 
@@ -279,12 +281,12 @@
 				</label>
 
 				<div class="col-span-2 mt-2 flex items-center justify-between gap-2">
-					<button type="button" class="md-btn-text" onclick={save} disabled={pending}>
+					<MdButton type="button" variant="text" onclick={save} disabled={pending}>
 						{activeId ? $t('conn.save_changes') : $t('conn.save_as_new')}
-					</button>
-					<button type="submit" class="md-btn-filled" disabled={pending}>
+					</MdButton>
+					<MdButton type="submit" variant="filled" disabled={pending}>
 						{pending ? $t('conn.connecting') : $t('conn.connect')}
-					</button>
+					</MdButton>
 				</div>
 			</form>
 		</div>

@@ -9,6 +9,7 @@
 	import TablePanel from '$lib/components/TablePanel.svelte';
 	import TableEditor from '$lib/components/TableEditor.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import MdButton from '$lib/components/MdButton.svelte';
 	import { t } from '$lib/i18n';
 	import { get } from 'svelte/store';
 	import { getSystemInfo } from '$lib/api';
@@ -225,20 +226,20 @@
 
 		<div class="flex-1"></div>
 
-		<button class="md-btn-text" onclick={openSqlTab} disabled={!selectedSchema}>
+		<MdButton variant="text" onclick={openSqlTab} disabled={!selectedSchema}>
 			{$t('workspace.sql_console')}
-		</button>
-		<button class="md-btn-text" onclick={openUsersTab}>{$t('workspace.users')}</button>
+		</MdButton>
+		<MdButton variant="text" onclick={openUsersTab}>{$t('workspace.users')}</MdButton>
 		<div class="flex items-center gap-1">
 			<ThemeToggle />
-			<button class="md-icon-btn" onclick={openSettings} title={$t('workspace.settings')}>
+			<MdButton variant="icon" onclick={openSettings} title={$t('workspace.settings')}>
 				<svg width="18" height="18" viewBox="0 0 20 20" fill="none">
 					<path d="M8.325 2.317a1.417 1.417 0 013.35 0 1.417 1.417 0 002.142.866 1.417 1.417 0 012.368 2.368 1.417 1.417 0 00.866 2.142 1.417 1.417 0 010 3.35 1.417 1.417 0 00-.866 2.142 1.417 1.417 0 01-2.368 2.368 1.417 1.417 0 00-2.142.866 1.417 1.417 0 01-3.35 0 1.417 1.417 0 00-2.142-.866 1.417 1.417 0 01-2.368-2.368 1.417 1.417 0 00-.866-2.142 1.417 1.417 0 010-3.35 1.417 1.417 0 00.866-2.142 1.417 1.417 0 012.368-2.368 1.417 1.417 0 002.142-.866z" stroke="currentColor" stroke-width="1.3"/>
 					<circle cx="10" cy="10" r="2.5" stroke="currentColor" stroke-width="1.3"/>
 				</svg>
-			</button>
+			</MdButton>
 		</div>
-		<button class="md-btn-outlined" onclick={disconnect}>{$t('workspace.disconnect')}</button>
+		<MdButton variant="outlined" onclick={disconnect}>{$t('workspace.disconnect')}</MdButton>
 	</header>
 
 	<div class="flex flex-1 overflow-hidden">

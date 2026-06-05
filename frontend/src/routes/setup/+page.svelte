@@ -8,6 +8,7 @@
 	} from '$lib/stores/themeStore.js';
 	import { t, locale, setLocale, locales } from '$lib/i18n';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import MdButton from '$lib/components/MdButton.svelte';
 
 	let step = $state(1); // 1=语言, 2=主题
 	// 临时语言选择（预览用，点击"下一步"时才持久化）
@@ -114,9 +115,9 @@
 					{/each}
 				</select>
 				<div class="flex justify-center pt-2">
-					<button class="md-btn-filled px-8 py-2 text-sm" onclick={goNext}>
+					<MdButton variant="filled" class="px-8 py-2 text-sm" onclick={goNext}>
 						下一步
-					</button>
+					</MdButton>
 				</div>
 			</div>
 		{:else}
@@ -142,12 +143,12 @@
 				</p>
 
 				<div class="flex justify-center gap-3 pt-4">
-					<button class="md-btn-outlined px-6 py-2 text-sm" onclick={() => (step = 1)}>
+					<MdButton variant="outlined" class="px-6 py-2 text-sm" onclick={() => (step = 1)}>
 						{$t('common.cancel')}
-					</button>
-					<button class="md-btn-filled px-8 py-2 text-sm" onclick={finish}>
+					</MdButton>
+					<MdButton variant="filled" class="px-8 py-2 text-sm" onclick={finish}>
 						{$t('common.confirm')}
-					</button>
+					</MdButton>
 				</div>
 			</div>
 		{/if}

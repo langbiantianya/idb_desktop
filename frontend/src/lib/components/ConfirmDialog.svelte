@@ -1,5 +1,6 @@
 <script>
 	import Modal from './Modal.svelte';
+	import MdButton from './MdButton.svelte';
 	import { t } from '$lib/i18n';
 
 	/**
@@ -32,15 +33,15 @@
 <Modal {open} {title} size="sm" onClose={onCancel}>
 	<p class="leading-relaxed whitespace-pre-line" style="color: var(--md-on-surface-variant);">{message}</p>
 	{#snippet footer()}
-		<button class="md-btn-text" onclick={onCancel} disabled={pending}>
+		<MdButton variant="text" onclick={onCancel} disabled={pending}>
 			{cancelText}
-		</button>
-		<button
-			class={danger ? 'md-btn-danger' : 'md-btn-filled'}
+		</MdButton>
+		<MdButton
+			variant={danger ? 'danger' : 'filled'}
 			onclick={onConfirm}
 			disabled={pending}
 		>
 			{pending ? $t('common.processing') : confirmText}
-		</button>
+		</MdButton>
 	{/snippet}
 </Modal>

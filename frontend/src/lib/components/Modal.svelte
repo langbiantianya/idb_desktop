@@ -1,5 +1,6 @@
 <script>
 	import { t } from '$lib/i18n';
+	import MdButton from './MdButton.svelte';
 	/**
 	 * @typedef {Object} Props
 	 * @property {boolean} open
@@ -36,13 +37,13 @@
 			{#if title}
 				<header class="flex items-start justify-between">
 					<h2 class="text-base font-semibold" style="color: var(--md-on-surface);">{title}</h2>
-					<button
-						class="md-icon-btn"
+					<MdButton
+						variant="icon"
 						onclick={onClose}
-						aria-label={$t('common.close_label')}
+						ariaLabel={$t('common.close_label')}
 					>
 						✕
-					</button>
+					</MdButton>
 				</header>
 			{/if}
 			<div class="text-sm" style="color: var(--md-on-surface);">

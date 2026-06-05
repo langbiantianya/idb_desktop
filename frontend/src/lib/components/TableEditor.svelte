@@ -4,6 +4,7 @@
 	import { t } from '$lib/i18n';
 	import { get } from 'svelte/store';
 	import Modal from './Modal.svelte';
+	import MdButton from './MdButton.svelte';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
@@ -129,7 +130,7 @@
 		<div class="flex flex-col gap-2">
 			<div class="flex items-center justify-between">
 				<span class="text-sm" style="color: var(--md-on-surface-variant);">{$t('table.columns')}</span>
-				<button class="md-btn-text" onclick={addColumn}>{$t('table.add_column')}</button>
+				<MdButton variant="text" onclick={addColumn}>{$t('table.add_column')}</MdButton>
 			</div>
 
 			<div
@@ -218,35 +219,35 @@
 								</td>
 								<td class="px-2 py-1">
 									<div class="flex items-center justify-end gap-0.5">
-										<button
+										<MdButton
 											type="button"
-											class="md-icon-btn"
+											variant="icon"
 											style="width: 1.5rem; height: 1.5rem; font-size: 0.75rem;"
 											title={$t('table.move_up')}
 											onclick={() => moveUp(i)}
 											disabled={i === 0}
 										>
 											↑
-										</button>
-										<button
+										</MdButton>
+										<MdButton
 											type="button"
-											class="md-icon-btn"
+											variant="icon"
 											style="width: 1.5rem; height: 1.5rem; font-size: 0.75rem;"
 											title={$t('table.move_down')}
 											onclick={() => moveDown(i)}
 											disabled={i === columns.length - 1}
 										>
 											↓
-										</button>
-										<button
+										</MdButton>
+										<MdButton
 											type="button"
-											class="md-icon-btn"
+											variant="icon"
 											style="width: 1.5rem; height: 1.5rem; font-size: 0.75rem;"
 											title={$t('common.delete')}
 											onclick={() => removeColumn(i)}
 										>
 											<span style="color: var(--md-error);">✕</span>
-										</button>
+										</MdButton>
 									</div>
 								</td>
 							</tr>
@@ -264,13 +265,13 @@
 	</div>
 
 	{#snippet footer()}
-		<button class="md-btn-text" onclick={onClose} disabled={pending}>{$t('common.cancel')}</button>
-		<button
-			class="md-btn-filled"
+		<MdButton variant="text" onclick={onClose} disabled={pending}>{$t('common.cancel')}</MdButton>
+		<MdButton
+			variant="filled"
 			onclick={submit}
 			disabled={pending || !tableName.trim() || columns.length === 0}
 		>
 			{pending ? $t('common.creating') : $t('common.create')}
-		</button>
+		</MdButton>
 	{/snippet}
 </Modal>

@@ -63,14 +63,16 @@ idb_desktop/
 │   │   │   │   ├── en.js        # English
 │   │   │   │   ├── ja.js        # 日本語
 │   │   │   │   └── ru.js        # Русский
-│   │   │   ├── components/      # 15 个 Svelte 组件
+│   │   │   ├── components/      # 17 个 Svelte 组件
+│   │   │   │   ├── MdButton.svelte         # MD3 通用按钮组件（6 种 variant × 3 种 size）
 │   │   │   │   ├── ConnectionForm.svelte  # 连接管理界面
 │   │   │   │   ├── Sidebar.svelte         # 数据库树形浏览器
-│   │   │   │   ├── DataGrid.svelte        # 数据表格（分页 + 全量流式加载 + 行 CRUD + 列内筛选 + 搜索）；header 双行：标题/工具栏（上）+ WHERE / ORDER BY（下，中间分割线）
-│   │   │   │   ├── SqlConsole.svelte      # SQL 控制台（SELECT 自动流式）
+│   │   │   │   ├── DataGrid.svelte        # 数据表格（分页 + 全量流式加载 + 行 CRUD + 列内筛选 + 搜索 + 虚拟滚动）；header 双行：标题/工具栏（上）+ WHERE / ORDER BY（下，中间分割线）
+│   │   │   │   ├── SqlConsole.svelte      # SQL 控制台（SELECT 自动流式 + 虚拟滚动 + 增量 UI 更新）
 │   │   │   │   ├── SqlEditor.svelte       # Monaco 编辑器封装
 │   │   │   │   ├── MonacoInput.svelte     # Monaco 单行输入封装（WHERE / ORDER BY 补全）
 │   │   │   │   ├── UserPanel.svelte       # 用户与权限管理
+│   │   │   │   ├── SettingsPanel.svelte   # 设置面板（语言/主题/JVM内存/系统信息，支持路由和全局 overlay 两种模式）
 │   │   │   │   ├── TablePanel.svelte      # 表结构编辑器（ALTER TABLE，支持改名）
 │   │   │   │   ├── TableEditor.svelte     # 新建表向导
 │   │   │   │   ├── RowEditor.svelte       # 行插入/编辑表单
@@ -82,6 +84,7 @@ idb_desktop/
 │   │   │   ├── stores/          # Svelte 状态管理
 │   │   │   │   ├── appState.js  # 活跃连接状态
 │   │   │   │   ├── themeStore.js # 主题偏好 + 自定义主题注入 + 设置持久化（Go 后端）
+│   │   │   │   ├── overlayStore.js # 全局 overlay 状态（设置面板 overlay 开关，避免销毁 workspace）
 │   │   │   │   └── toasts.js    # Toast 通知队列
 │   │   │   ├── monaco/setup.js  # Monaco Worker 初始化
 │   │   │   ├── readonly.js      # 只读系统库保护（MySQL 系统 schema + 写关键字检测）
@@ -92,12 +95,12 @@ idb_desktop/
 │   │   │   └── index.js         # lib 顶层 barrel 导出（轻量）
 │   │   └── routes/
 │   │       ├── +layout.js       # prerender = true
-│   │       ├── +layout.svelte   # 全局布局（主题初始化 + 引导检测 + 右键策略 + ToastHost）
+│   │       ├── +layout.svelte   # 全局布局（主题初始化 + 引导检测 + 右键策略 + ToastHost + 设置面板 overlay + 页面切换动画）
 │   │       ├── +page.svelte     # 连接选择页（路由 /）
 │   │       ├── setup/
 │   │       │   └── +page.svelte # 首次引导页（路由 /setup：语言选择 + 主题选择）
 │   │       ├── settings/
-│   │       │   └── +page.svelte # 设置页（路由 /settings：语言/主题模式/自定义主题）
+│   │       │   └── +page.svelte # 设置页（路由 /settings：语言/主题模式/自定义主题/JVM内存）；workspace 内也通过 overlayStore 以 overlay 方式打开
 │   │       ├── workspace/
 │   │       │   └── +page.svelte # 数据库工作台（路由 /workspace）
 │   │       └── layout.css       # MD3 设计令牌 + Tailwind 4 @theme 注入
@@ -251,7 +254,7 @@ idb_desktop/
 
 启动时：
 1. 定位 `engine/bin/idb-engine.jar`，拼装命令行（`resolveAppDir()` 优先可执行文件目录，回退到 CWD）；
-2. 以受限 JVM 参数（`-Xms32m -Xmx256m -XX:+UseSerialGC`）启动 Java 子进程；
+2. 以受限 JVM 参数（`-Xms32m -Xmx{maxMemoryMB}m -XX:+UseSerialGC`）启动 Java 子进程，`maxMemoryMB` 默认 256，用户可在设置页配置（64-系统内存50%）；
 3. 取得 stdin / stdout 句柄，启动 `readLoop` goroutine 建立异步响应路由。
 
 关闭时：
@@ -297,7 +300,7 @@ type Engine struct {
 
 ### 6.2 内存与并发护栏
 
-- **JVM 上限锁死 256MB**：通过 `-Xmx256m` 启动参数施加，避免引擎抢占主进程内存预算。
+- **JVM 堆内存可配置**：通过 `-Xmx{maxMemoryMB}m` 启动参数施加，默认 256MB，用户可在设置页配置（64 ~ 系统内存50%），`LoadSettings` 自动返回 `systemMemoryMB` 供前端计算上限。重启引擎生效。
 - **JVM 初始堆 32MB + 串行 GC**：`-Xms32m -XX:+UseSerialGC`，桌面单人使用优先考虑内存占用而非吞吐。
 - **Wails Webview 目标**：物理常驻 ≤ 150MB（与 §9 大字段熔断协同保障）。
 - **stdout 单行缓冲上限 8 MiB**：`engineMaxLine`；超过会被 `bufio.ErrTooLong` 触发，readLoop 视为引擎异常并 `closeAll`。
@@ -361,18 +364,18 @@ compilerOptions: {
 - 亮色 / 暗色调色板（基于 MD3 baseline seed `#6750A4`）；
 - 完整令牌集：primary / secondary / tertiary / error / success / surface 色调 / outline / 阴影 / 圆角 / 状态层透明度；
 - `@theme` 块将所有 MD3 令牌映射为 Tailwind 工具类颜色；
-- `@utility` 自定义组件类：`md-card`、`md-card-elevated`、`md-input`、`md-btn-filled`、`md-btn-tonal`、`md-btn-outlined`、`md-btn-text`、`md-btn-danger`、`md-icon-btn`、`md-chip`、`md-chip-pk`；
+- `@utility` 自定义组件类：`md-card`、`md-card-elevated`、`md-input`、`md-chip`、`md-chip-pk`；按钮已迁移至 `MdButton.svelte` 组件（6 种 variant × 3 种 size）；
 - 字体栈：Inter + CJK 回退（sans），JetBrains Mono（monospace）。
 
 无 `tailwind.config.js`（Tailwind 4 默认零配置）。
 
 ### 8.4 状态中心
 
-已实现三个 Svelte Store（位于 `src/lib/stores/`）+ i18n locale store：
+已实现四个 Svelte Store（位于 `src/lib/stores/`）+ i18n locale store：
 
 ```js
 // appState.js — 活跃数据库连接
-export const defaultConnection = { driver: 'Mysql', host: '127.0.0.1', port: 3306, user: 'root' }
+export const defaultConnection = { name: '', driver: 'Mysql', host: '127.0.0.1', port: 3306, user: 'root', password: '', database: '' }
 export const activeConnection = writable(null) // ConnectionConfig | null
 
 // themeStore.js — 主题偏好 + 自定义主题 + 设置持久化（Go 后端）
@@ -381,8 +384,15 @@ export const resolvedTheme = writable('light')  // 实际应用的 'light' | 'da
 export const lightThemeId = writable('')        // 浅色自定义主题 ID（空 = 内置 MD3）
 export const darkThemeId = writable('')         // 深色自定义主题 ID（空 = 内置 MD3）
 export const setupComplete = writable(false)    // 首次引导是否已完成
+export const settingsLoaded = writable(false)   // 设置是否已从 Go 后端加载完成
 export const memRefreshSeconds = writable(10)   // workspace 内存刷新间隔（秒）
 export const jvmMaxMemoryMB = writable(256)     // JVM 最大堆内存（MB）
+export const systemMemoryMB = writable(0)       // 系统物理内存（MB），只读，Go 后端 LoadSettings 返回
+
+// overlayStore.js — 全局 overlay 状态
+export const showSettings = writable(false)     // 设置面板 overlay 开关
+export function openSettings() { showSettings.set(true) }
+export function closeSettings() { showSettings.set(false) }
 
 // i18n/index.js — 多语言
 export const locale = writable('zh-CN')         // 'zh-CN' | 'zh-TW' | 'en' | 'ja' | 'ru'
@@ -390,8 +400,9 @@ export const t = derived(locale, ...)           // 翻译函数：$t('key') 或 
 
 // toasts.js — Toast 通知队列，自动 3.5s 移除
 export const toasts = writable([])
-export function ok(text) { pushToast('success', text) }
-export function err(text) { pushToast('error', text) }
+export function ok(text) { pushToast('ok', text) }
+export function err(text) { pushToast('err', text) }
+export function dismissToast(id) { ... }        // 手动移除指定 toast
 ```
 
 > 所有写入引擎的请求从 `activeConnection` 取出 `connection` 字段，前端 API 层（`src/lib/api/index.js`）自动完成拼装。
@@ -431,7 +442,70 @@ export function err(text) { pushToast('error', text) }
 - WHERE 输入使用 `flex-1` 占满剩余宽度，ORDER BY 固定宽度保证简短排序条件不被拉伸。
 - 两行均使用 `items-center`，输入框高度统一 `20px`（与 MonacoInput 单行基线对齐）。
 
-### 8.7 SQL 片段前端校验
+### 8.7 虚拟滚动（Virtual Scroll）
+
+DataGrid 和 SqlConsole 共享同一套虚拟滚动机制，实现类似 Android RecyclerView 的 DOM 节点复用。
+
+**激活条件**：
+- DataGrid："全量"模式（pageSize=0）流式加载，行数超过 500 时**即时**激活（流式过程中每 100 行检测一次）。
+- SqlConsole：SELECT 流式结果，行数超过 500 时即时激活。
+- 小数据集（≤500 行）走普通 `{#each}` 渲染，零额外开销。
+
+**布局原理**（spacer 定位法）：
+```
+┌─ scroll container (overflow:auto) ────────┐
+│ <thead sticky top:0>                      │  ← 钉顶
+│ <tbody>                                   │
+│   <tr class="vs-spacer" h=offsetY>        │  ← 上方 spacer
+│   可见行 (~40 个 <tr>, keyed by 全局索引)   │  ← DOM 复用
+│   <tr class="vs-spacer" h=bottomPad>      │  ← 下方 spacer
+│ </tbody>                                  │
+│ 表格总高度 = totalRows × rowHeight (恒定)  │
+└───────────────────────────────────────────┘
+```
+
+**关键实现细节**：
+- **列宽锁定**：流式结束后测量一次 `<th>` 宽度，切换到 `table-layout: fixed` 防止滚动时列宽跳动。流式过程中不测量（列还在变化）。
+- **行高校准**：首次虚拟渲染后测量实际行高，修正 28px 初始估算。
+- **滚动节流**：`requestAnimationFrame` 节流 `scrollTop` 更新。
+- **视口追踪**：`ResizeObserver` 监听容器高度变化。
+- **DOM 复用**：`{#each visRows as row, vi (vRange.start + vi)}` 使用全局索引做 key，Svelte keyed diff 自动保留 DOM 节点只更新内容。
+- **流式增量 UI**：SqlConsole 流式过程中每 100 行更新 `results` 触发 UI 刷新，用户可实时看到数据流入。
+- **tab 切换重置**：SqlConsole 切换结果 tab 时重置所有虚拟滚动状态。
+
+### 8.8 MdButton 通用按钮组件
+
+[MdButton.svelte](frontend/src/lib/components/MdButton.svelte) 封装了 MD3 按钮规范，替代原 layout.css 中的全局 `@utility md-btn-*` 类。
+
+**Props API**：
+```svelte
+<MdButton variant="filled" size="md" disabled={false} type="button" title="" onclick={fn}>
+  按钮文本
+</MdButton>
+```
+
+| Prop | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `variant` | `'filled' \| 'tonal' \| 'outlined' \| 'text' \| 'danger' \| 'icon'` | `'filled'` | 按钮风格 |
+| `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | 尺寸 |
+| `disabled` | `boolean` | `false` | 禁用 |
+| `type` | `'button' \| 'submit' \| 'reset'` | `'button'` | 按钮类型 |
+| `title` | `string` | — | tooltip |
+| `ariaLabel` | `string` | — | 无障碍标签 |
+
+**尺寸映射**：
+
+| size | padding | font-size | icon 尺寸 |
+|------|---------|-----------|----------|
+| `sm` | 0.125rem 0.5rem | 0.75rem | 1.5rem |
+| `md` | 标准 | 0.8125rem | 2rem |
+| `lg` | 0.625rem 1.5rem | 1rem | 2.5rem |
+
+**6 种 variant**：`filled`（主要操作）、`tonal`（次要操作）、`outlined`（边框操作）、`text`（文本操作）、`danger`（危险操作）、`icon`（图标按钮）。样式已从 layout.css 全局类迁移至组件 scoped CSS。
+
+**未迁移的按钮**：SqlConsole 的 `sql-tool-btn` / `sql-run-btn` / `result-tab`、Sidebar 的 `resize-handle`、ContextMenu 的 `context-menu-item`、ToastHost 的 `toast-close` 保留 scoped CSS，不使用 MdButton。
+
+### 8.9 SQL 片段前端校验
 
 `sqlValidate.js`（在 `invoke` 前调用）对 WHERE / ORDER BY 片段做早判，提前拒绝危险片段，避免无意义的网络往返。校验逻辑按数据库方言分叉：
 
@@ -439,7 +513,7 @@ export function err(text) { pushToast('error', text) }
 - **ORDER BY 额外约束**：仅允许列名、ASC/DESC、数字字面量和逗号分隔符，显式拒绝函数/子查询拼接。
 - 引擎侧也会做二次校验（Kotlin 层），双重防护确保安全。
 
-### 8.8 SQL 补全项配置
+### 8.10 SQL 补全项配置
 
 `sqlCompletion.js` 按上下文分组提供 Monaco 补全项：
 
@@ -459,7 +533,7 @@ export function err(text) { pushToast('error', text) }
 2. **大字段熔断**
    `BLOB` / `CLOB` / `BYTEA` 或长度 > 2048 字符的文本，引擎层在序列化 JSON 时必须截断为占位 `[LOB Data / Multi-Text Context]`；前端渲染为 MD3 放大镜图标，用户点击触发**单行精准查询**。规避 stdin/stdout 缓冲区被打爆导致 Wails 假死。
 3. **分页强约束**
-   单页上限 `pageSize ≤ 1000`（当前默认 20 行/页，可选 20/50/100/200/500/全量）；前端表格目前使用标准 `<table>` 渲染，虚拟滚动（virtual list）待后续引入以保证大列宽表 DOM 节点常量级。
+   当前默认 20 行/页，可选 20/50/100/200/500/全量；"全量"模式启用虚拟滚动（阈值 500 行），仅渲染可视区域 ~40 行 DOM 节点，流式过程中超阈值即时激活虚拟模式。
 4. **凭证生命周期**
    `password` 仅存在于前端 Store + 单次请求 envelope；引擎落到磁盘 / 日志的内容必须脱敏（连接串中的密码字段在 panic / error 路径中务必抹除）。
 5. **进程边界纪律**
@@ -520,8 +594,8 @@ cd frontend && npm run lint
 | 连接配置持久化 | ✅ 加密存储（Windows DPAPI / 非 Windows AES-256-GCM + 本地 key），CRUD 完整 |
 | 连接管理界面 | ✅ 连接列表 + 表单 + 密码保存 + 删除确认 |
 | 数据库树形浏览器 | ✅ 三级懒加载（Schema → Table → Column），右键菜单，筛选 |
-| 数据表格查看/编辑 | ✅ 分页（20/50/100/200/500/全量） + 全量流式加载 + 行 CRUD + 列内筛选 + 搜索 + 双行 header（标题工具栏 / WHERE+ORDER BY） |
-| SQL 控制台 | ✅ Monaco 编辑器 + 智能补全（按 driver 区分） + 多语句执行 + SELECT 流式 + sql-formatter 格式化 |
+| 数据表格查看/编辑 | ✅ 分页（20/50/100/200/500/全量） + 全量流式加载 + 虚拟滚动 + 行 CRUD + 列内筛选 + 搜索 + 双行 header（标题工具栏 / WHERE+ORDER BY） |
+| SQL 控制台 | ✅ Monaco 编辑器 + 智能补全（按 driver 区分） + 多语句执行 + SELECT 流式 + 虚拟滚动 + 增量 UI 更新 + sql-formatter 格式化（Alt+Shift+F） |
 | 表结构编辑 | ✅ Draft 模式列编辑器（ADD / MODIFY / DROP COLUMN）+ 新建表向导 + 字段改名（newName）+ GET_DDL |
 | 用户与权限管理 | ✅ 用户列表 + GRANT/REVOKE 模态框 |
 | WHERE / ORDER BY 安全 | ✅ 前端 `sqlValidate.js` 方言级校验 + 引擎侧二次校验 |
@@ -534,8 +608,8 @@ cd frontend && npm run lint
 | 设置页 | ✅ `/settings` 路由：语言切换、主题模式、自定义主题选择、性能设置、系统信息展示、主题文件格式说明 |
 | 设置持久化 | ✅ `~/.config/idb/settings.json`：语言/主题/引导状态/内存刷新频率/JVM内存，Go 后端 atomic-rename |
 | 系统信息 | ✅ 设置页展示 JVM/OS/CPU/内存信息，workspace 底部内存占用条（可配置刷新频率 1-10s） |
-| JVM 内存配置 | ✅ 设置页可配置 JVM 最大堆内存（64-4096MB，默认 256MB），重启引擎生效，系统内存检测（Windows API / Unix syscall） |
+| JVM 内存配置 | ✅ 设置页可配置 JVM 最大堆内存（64 ~ 系统内存50%，默认 256MB），重启引擎生效，系统内存检测（Windows API / Unix syscall） |
 | NSIS 安装包 | ✅ Windows 安装包（含 engine 打包 + 快捷方式选项） |
 | Linux 分发包 | ✅ tar.gz + run.sh 启动器 |
 | Makefile 自动化 | ✅ 双平台构建 + Azul Zulu JRE 21 自动下载 + deps 依赖自检 |
-| 虚拟滚动 | ⏳ 未实现（当前标准 table 渲染） |
+| 虚拟滚动 | ✅ DataGrid + SqlConsole 共享虚拟滚动机制（spacer 上下定位 + keyed DOM 复用 + 流式过程即时激活 + 列宽测量锁定） |

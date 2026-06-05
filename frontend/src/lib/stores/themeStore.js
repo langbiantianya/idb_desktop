@@ -41,6 +41,9 @@ export const memRefreshSeconds = writable(10);
 /** JVM 最大堆内存（MB）。 */
 export const jvmMaxMemoryMB = writable(256);
 
+/** 系统物理内存（MB），只读，由 Go 后端 LoadSettings 返回。 */
+export const systemMemoryMB = writable(0);
+
 // --- 自定义 CSS 注入 ---
 
 let currentInjectedId = '';
@@ -199,6 +202,7 @@ export async function initTheme() {
 		setupComplete.set(settings.setupComplete ?? false);
 		memRefreshSeconds.set(settings.memRefreshSeconds ?? 10);
 		jvmMaxMemoryMB.set(settings.JvmMaxMemoryMB ?? 256);
+		systemMemoryMB.set(settings.systemMemoryMB ?? 0);
 		// 兼容：同步写回 localStorage
 		localStorage.setItem(STORAGE_KEY, get(themeMode));
 	} catch {

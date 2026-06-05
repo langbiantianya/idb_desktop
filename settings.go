@@ -17,6 +17,7 @@ type AppSettings struct {
 	DarkThemeID       string `json:"darkThemeId"`       // 深色模式主题 ID，空 = 内置 MD3
 	MemRefreshSeconds int    `json:"memRefreshSeconds"` // 内存刷新间隔（秒），默认 10
 	JvmMaxMemoryMB    int    `json:"JvmMaxMemoryMB"`    // JVM 最大堆内存（MB），默认 256
+	SystemMemoryMB    int    `json:"systemMemoryMB"`    // 系统物理内存（MB），只读，前端用于计算 JVM 上限
 }
 
 const settingsFileName = "settings.json"
@@ -60,13 +61,13 @@ func (s *configStore) LoadSettings() (AppSettings, error) {
 		settings.MemRefreshSeconds = 10
 	}
 	if settings.JvmMaxMemoryMB == 0 {
-		// 默认值：系统内存的 70%，上下限 256-4096 MB
 		settings.JvmMaxMemoryMB = defaultJvmMemoryMB()
 	}
+	settings.SystemMemoryMB = systemMemoryMB()
 	return settings, nil
 }
 
-// defaultJvmMemoryMB 默认 JVM 最大堆 256MB，用户可在设置中调整（64-4096）。
+// defaultJvmMemoryMB 默认 JVM 最大堆 256MB，用户可在设置中调整（64 ~ 系统内存 50%）。
 func defaultJvmMemoryMB() int {
 	return 256
 }

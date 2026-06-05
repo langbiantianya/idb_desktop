@@ -9,6 +9,7 @@
 	import Modal from './Modal.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import ContextMenu from './ContextMenu.svelte';
+	import MdButton from './MdButton.svelte';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
@@ -461,15 +462,14 @@
 			class="flex h-full flex-col items-center gap-2 py-2"
 			style="border-right: none;"
 		>
-			<button
-				type="button"
-				class="md-icon-btn"
+			<MdButton
+				variant="icon"
 				title={$t('sidebar.expand')}
-				aria-label={$t('sidebar.expand')}
+				ariaLabel={$t('sidebar.expand')}
 				onclick={toggleCollapsed}
 			>
 				»
-			</button>
+			</MdButton>
 			<span class="mt-1 text-[10px] tracking-widest" style="writing-mode: vertical-rl; color: var(--md-on-surface-variant);">DATABASE</span>
 		</div>
 	{:else}
@@ -479,33 +479,30 @@
 			style="border-bottom: 1px solid var(--md-outline-variant);"
 		>
 			<div class="flex min-w-0 items-center gap-2">
-				<button
-					type="button"
-					class="md-icon-btn"
+				<MdButton
+					variant="icon"
 					title={$t('sidebar.collapse')}
-					aria-label={$t('sidebar.collapse')}
+					ariaLabel={$t('sidebar.collapse')}
 					onclick={toggleCollapsed}
 				>
 					«
-				</button>
+				</MdButton>
 				<span class="truncate text-sm" style="color: var(--md-on-surface-variant);">DATABASE</span>
 				{#if pending}
 					<span class="animate-pulse text-xs" style="color: var(--md-on-surface-variant);">…</span>
 				{/if}
 			</div>
 			<div class="flex items-center gap-0.5">
-				<button
-					type="button"
-					class="md-icon-btn"
+				<MdButton
+					variant="icon"
 					title={$t('sidebar.refresh')}
 					onclick={refreshSchemas}
 					disabled={pending}
 				>
 					↻
-				</button>
-				<button
-					type="button"
-					class="md-icon-btn"
+				</MdButton>
+				<MdButton
+					variant="icon"
 					title={$t('sidebar.new_schema')}
 					onclick={() => {
 						newName = '';
@@ -513,7 +510,7 @@
 					}}
 				>
 					＋
-				</button>
+				</MdButton>
 			</div>
 		</div>
 
@@ -611,9 +608,9 @@
 							{#if isReadOnlySchema(baseConn, s)}
 								<span class="md-chip" title={$t('sidebar.ro_readonly')}>RO</span>
 							{:else}
-								<button
-									type="button"
-									class="md-icon-btn opacity-0 group-hover:opacity-100"
+								<MdButton
+									variant="icon"
+									class="opacity-0 group-hover:opacity-100"
 									style="width: 1.25rem; height: 1.25rem;"
 									title={$t('sidebar.new_table')}
 									onclick={(e) => {
@@ -622,10 +619,10 @@
 									}}
 								>
 									<span style="color: var(--md-primary); font-size: 0.75rem;">＋</span>
-								</button>
-								<button
-									type="button"
-									class="md-icon-btn opacity-0 group-hover:opacity-100"
+								</MdButton>
+								<MdButton
+									variant="icon"
+									class="opacity-0 group-hover:opacity-100"
 									style="width: 1.25rem; height: 1.25rem;"
 									title={$t('common.delete')}
 									onclick={(e) => {
@@ -634,7 +631,7 @@
 									}}
 								>
 									<span style="color: var(--md-error); font-size: 0.75rem;">✕</span>
-								</button>
+								</MdButton>
 							{/if}
 						</div>
 
@@ -706,9 +703,9 @@
 												{#if tbl.type !== 'TABLE'}
 													<span class="md-chip">{tbl.type}</span>
 												{/if}
-												<button
-													type="button"
-													class="md-icon-btn opacity-0 group-hover/row:opacity-100"
+												<MdButton
+													variant="icon"
+													class="opacity-0 group-hover/row:opacity-100"
 													style="width: 1.125rem; height: 1.125rem;"
 													title={$t('sidebar.modify_table')}
 													onclick={(e) => {
@@ -717,11 +714,11 @@
 													}}
 												>
 													<span style="color: var(--md-on-surface-variant); font-size: 0.625rem;">⊞</span>
-												</button>
+												</MdButton>
 												{#if !isReadOnlySchema(baseConn, s)}
-													<button
-														type="button"
-														class="md-icon-btn opacity-0 group-hover/row:opacity-100"
+													<MdButton
+														variant="icon"
+														class="opacity-0 group-hover/row:opacity-100"
 														style="width: 1.125rem; height: 1.125rem;"
 														title={$t('sidebar.delete_table')}
 														onclick={(e) => {
@@ -730,7 +727,7 @@
 														}}
 													>
 														<span style="color: var(--md-error); font-size: 0.625rem;">✕</span>
-													</button>
+													</MdButton>
 												{/if}
 											</div>
 
@@ -807,12 +804,12 @@
 		<input class="md-input" type="text" bind:value={newName} placeholder={$t('sidebar.name_placeholder')} />
 	</label>
 	{#snippet footer()}
-		<button class="md-btn-text" onclick={() => (creating = false)} disabled={createPending}>
+		<MdButton variant="text" onclick={() => (creating = false)} disabled={createPending}>
 			{$t('common.cancel')}
-		</button>
-		<button class="md-btn-filled" onclick={doCreate} disabled={createPending || !newName.trim()}>
+		</MdButton>
+		<MdButton variant="filled" onclick={doCreate} disabled={createPending || !newName.trim()}>
 			{createPending ? $t('common.creating') : $t('common.create')}
-		</button>
+		</MdButton>
 	{/snippet}
 </Modal>
 

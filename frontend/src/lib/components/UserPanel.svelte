@@ -5,6 +5,7 @@
 	import { t } from '$lib/i18n';
 	import { get } from 'svelte/store';
 	import Modal from './Modal.svelte';
+	import MdButton from './MdButton.svelte';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
@@ -109,7 +110,7 @@
 				<span class="ml-2 animate-pulse text-xs" style="color: var(--md-on-surface-variant);">…</span>
 			{/if}
 		</h2>
-		<button class="md-icon-btn" title={$t('common.refresh')} onclick={refresh} disabled={pending}>↻</button>
+		<MdButton variant="icon" title={$t('common.refresh')} onclick={refresh} disabled={pending}>↻</MdButton>
 	</header>
 
 	<div class="flex-1 overflow-auto px-3 pb-3">
@@ -125,7 +126,7 @@
 						<span class="truncate font-mono" style="color: var(--md-on-surface);">
 							{u.user}{u.host ? `@${u.host}` : ''}
 						</span>
-						<button class="md-btn-text" onclick={() => openEditor(u)}>{$t('user.grant_revoke')}</button>
+						<MdButton variant="text" onclick={() => openEditor(u)}>{$t('user.grant_revoke')}</MdButton>
 					</li>
 				{/each}
 			</ul>
@@ -196,15 +197,15 @@
 	</div>
 
 	{#snippet footer()}
-		<button class="md-btn-text" onclick={() => (editing = null)} disabled={formPending}>
+		<MdButton variant="text" onclick={() => (editing = null)} disabled={formPending}>
 			{$t('common.cancel')}
-		</button>
-		<button
-			class={formIsGrant ? 'md-btn-filled' : 'md-btn-danger'}
+		</MdButton>
+		<MdButton
+			variant={formIsGrant ? 'filled' : 'danger'}
 			onclick={submit}
 			disabled={formPending || formPrivileges.size === 0 || !formSchema}
 		>
 			{formPending ? $t('common.submitting') : formIsGrant ? $t('user.grant') : $t('user.revoke')}
-		</button>
+		</MdButton>
 	{/snippet}
 </Modal>

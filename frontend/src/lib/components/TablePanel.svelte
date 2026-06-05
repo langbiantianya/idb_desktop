@@ -8,6 +8,7 @@
 	import Modal from './Modal.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import ContextMenu from './ContextMenu.svelte';
+	import MdButton from './MdButton.svelte';
 
 	/**
 	 * 表结构编辑器：所有改动先落到本地 draft，点"保存"才统一推送到引擎。
@@ -304,11 +305,11 @@
 			{#if pending}<span class="ml-2 animate-pulse">…</span>{/if}
 		</span>
 		<div class="flex items-center gap-1">
-			<button class="md-icon-btn" title={$t('panel.reload_hint')} onclick={load} disabled={pending || saving}>↻</button>
+			<MdButton variant="icon" title={$t('panel.reload_hint')} onclick={load} disabled={pending || saving}>↻</MdButton>
 			{#if readOnly}
 				<span class="md-chip" title={$t('datagrid.ro_tooltip')}>{$t('datagrid.ro_readonly')}</span>
 			{:else}
-				<button class="md-btn-text" onclick={addColumn} disabled={pending || saving}>{$t('table.add_column')}</button>
+				<MdButton variant="text" onclick={addColumn} disabled={pending || saving}>{$t('table.add_column')}</MdButton>
 			{/if}
 		</div>
 	</div>
@@ -426,25 +427,26 @@
 							<td class="px-2 py-1" style="border-bottom: 1px solid var(--md-outline-variant);">
 								{#if !readOnly}
 									{#if droppedRow}
-										<button
+										<MdButton
 											type="button"
-											class="md-btn-text"
-											style="padding: 0.125rem 0.375rem; font-size: 0.6875rem;"
+											variant="text"
+											size="sm"
 											onclick={() => undoDrop(i)}
 										>
 											{$t('common.undo')}
-										</button>
+										</MdButton>
 									{:else}
-										<button
+										<MdButton
 											type="button"
-											class="md-btn-text"
-											style="padding: 0.125rem 0.375rem; color: var(--md-error); font-size: 0.6875rem;"
+											variant="text"
+											size="sm"
+											style="color: var(--md-error);"
 											onclick={() => markDrop(i)}
 											disabled={e.original?.isPrimaryKey === true}
 											title={e.original?.isPrimaryKey ? $t('panel.pk_no_delete') : $t('common.delete')}
 										>
 											{$t('common.delete')}
-										</button>
+										</MdButton>
 									{/if}
 								{/if}
 							</td>
@@ -462,13 +464,13 @@
 	</datalist>
 
 	{#snippet footer()}
-		<button class="md-btn-text" onclick={tryClose} disabled={saving}>
+		<MdButton variant="text" onclick={tryClose} disabled={saving}>
 			{dirty ? $t('common.cancel') : $t('common.close')}
-		</button>
+		</MdButton>
 		{#if !readOnly}
-			<button class="md-btn-filled" onclick={save} disabled={saving || pending || !canSave}>
+			<MdButton variant="filled" onclick={save} disabled={saving || pending || !canSave}>
 				{saving ? $t('common.saving') : $t('common.save')}
-			</button>
+			</MdButton>
 		{/if}
 	{/snippet}
 </Modal>

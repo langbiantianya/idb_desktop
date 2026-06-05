@@ -1,5 +1,6 @@
 <script>
 	import Modal from './Modal.svelte';
+	import MdButton from './MdButton.svelte';
 	import { t } from '$lib/i18n';
 	import {
 		temporalKind,
@@ -144,14 +145,14 @@
 								<span class="md-chip-pk ml-1">PK</span>
 							{/if}
 						</span>
-						<button
+						<MdButton
 							type="button"
-							class="md-btn-text"
+							variant="text"
 							style="padding: 0 0.375rem; font-size: 0.625rem;"
 							onclick={() => setNull(c)}
 						>
 							{$t('row.set_null')}
-						</button>
+						</MdButton>
 					</div>
 					{#if drafts[c] === null}
 						<button
@@ -199,12 +200,12 @@
 		</div>
 
 		<footer class="flex justify-end gap-2 pt-2">
-			<button class="md-btn-text" type="button" onclick={onCancel} disabled={pending}>
+			<MdButton variant="text" type="button" onclick={onCancel} disabled={pending}>
 				{$t('common.cancel')}
-			</button>
-			<button class="md-btn-filled" type="submit" disabled={pending}>
+			</MdButton>
+			<MdButton variant="filled" type="submit" disabled={pending}>
 				{pending ? $t('common.submitting') : editing ? $t('row.save_changes') : $t('common.insert')}
-			</button>
+			</MdButton>
 		</footer>
 	</form>
 </Modal>
