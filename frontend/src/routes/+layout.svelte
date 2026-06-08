@@ -33,10 +33,16 @@
 		return false;
 	}
 
+	// 初始页面加载标记：首次渲染的 div 不播放路由动画。
+	// $effect.pre 在首次 DOM 提交后将 firstRender 置 false；
+	// 后续路由变化时 {#key} 重渲染创建新 div，此时 firstRender 已为 false → 播放动画。
+	let firstRender = true;
+
 	// 路由变化时更新路径（触发 {#key} 重渲染 + 动画）
-	$effect(() => {
+	$effect.pre(() => {
 		prevPath = currentPath;
 		currentPath = page.url.pathname;
+		firstRender = false;
 	});
 
 	$effect(() => {
@@ -56,10 +62,11 @@
 <svelte:window oncontextmenu={devMode ? undefined : (e) => e.preventDefault()} />
 {#key currentPath}
 	{@const back = isBackNav(prevPath, currentPath)}
+	<!-- svelte-ignore non_reactive_update -->
 	<div
 		class="h-screen"
-		in:fly={{ x: back ? 300 : -300, duration: 350, easing: mdDecelerate }}
-		out:fly={{ x: back ? -300 : 300, duration: 250, easing: cubicOut }}
+		in:fly={firstRender ? undefined : { x: back ? 300 : -300, duration: 350, easing: mdDecelerate }}
+		out:fly={firstRender ? undefined : { x: back ? -300 : 300, duration: 250, easing: cubicOut }}
 	>
 		{@render children()}
 	</div>

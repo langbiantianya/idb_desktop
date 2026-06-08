@@ -267,6 +267,10 @@ export const ru = {
 	'settings.language': 'Язык',
 	'settings.dark': 'Тёмная',
 	'settings.light': 'Светлая',
+	'settings.nav.general': 'Общие',
+	'settings.nav.appearance': 'Оформление',
+	'settings.nav.performance': 'Производительность',
+	'settings.nav.system': 'Система',
 
 	// ---- Переключатель темы ----
 	'theme.light': 'Светлая',

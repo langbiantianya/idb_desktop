@@ -267,6 +267,10 @@ export const zhTW = {
 	'settings.language': '語言',
 	'settings.dark': '深色',
 	'settings.light': '淺色',
+	'settings.nav.general': '通用',
+	'settings.nav.appearance': '外觀',
+	'settings.nav.performance': '效能',
+	'settings.nav.system': '系統資訊',
 
 	// ---- 主題切換 ----
 	'theme.light': '淺色',

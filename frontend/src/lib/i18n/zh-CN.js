@@ -267,6 +267,10 @@ export const zhCN = {
 	'settings.language': '语言',
 	'settings.dark': '深色',
 	'settings.light': '浅色',
+	'settings.nav.general': '通用',
+	'settings.nav.appearance': '外观',
+	'settings.nav.performance': '性能',
+	'settings.nav.system': '系统信息',
 
 	// ---- 主题切换 ----
 	'theme.light': '浅色',

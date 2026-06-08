@@ -267,6 +267,10 @@ export const ja = {
 	'settings.language': '言語',
 	'settings.dark': 'ダーク',
 	'settings.light': 'ライト',
+	'settings.nav.general': '一般',
+	'settings.nav.appearance': '外観',
+	'settings.nav.performance': 'パフォーマンス',
+	'settings.nav.system': 'システム情報',
 
 	// ---- テーマ切替 ----
 	'theme.light': 'ライト',

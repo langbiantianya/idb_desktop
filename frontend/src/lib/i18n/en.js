@@ -267,6 +267,10 @@ export const en = {
 	'settings.language': 'Language',
 	'settings.dark': 'Dark',
 	'settings.light': 'Light',
+	'settings.nav.general': 'General',
+	'settings.nav.appearance': 'Appearance',
+	'settings.nav.performance': 'Performance',
+	'settings.nav.system': 'System',
 
 	// ---- Theme Toggle ----
 	'theme.light': 'Light',
