@@ -144,21 +144,28 @@ export async function invokeStreaming(category, action, connection, payload, onR
 		});
 
 		// 发送请求；Go 端 FetchDatabaseDataStreaming 等同于普通 Invoke 的初始化确认
-		FetchDatabaseDataStreaming(JSON.stringify(req)).then((raw) => {
-			console.log('[invokeStreaming] Go response', raw);
-			try {
-				const resp = JSON.parse(raw);
-				if (!resp.success) {
-					// 请求被拒绝（引擎未就绪等），直接返回错误
-					safeResolve(resp);
+		FetchDatabaseDataStreaming(JSON.stringify(req))
+			.then((raw) => {
+				console.log('[invokeStreaming] Go response', raw);
+				try {
+					const resp = JSON.parse(raw);
+					if (!resp.success) {
+						// 请求被拒绝（引擎未就绪等），直接返回错误
+						safeResolve(resp);
+					}
+					// resp.success === true 时不 resolve，等待流式事件或 channel 响应
+				} catch {
+					safeResolve({ id, success: false, error: 'invalid streaming init response', data: null });
 				}
-				// resp.success === true 时不 resolve，等待流式事件或 channel 响应
-			} catch {
-				safeResolve({ id, success: false, error: 'invalid streaming init response', data: null });
-			}
-		}).catch((e) => {
-			safeResolve({ id, success: false, error: e instanceof Error ? e.message : String(e), data: null });
-		});
+			})
+			.catch((e) => {
+				safeResolve({
+					id,
+					success: false,
+					error: e instanceof Error ? e.message : String(e),
+					data: null
+				});
+			});
 	});
 }
 
@@ -179,12 +186,59 @@ export const deleteSchema = (connection, name) => invoke('SCHEMA', 'DELETE', con
 export const listUsers = (connection) => invoke('USER', 'LIST', connection);
 
 /**
+ * 查询指定用户的权限列表（MySQL: GRANT 语句; PostgreSQL: schema/table/privilege）。
+ * @param {ConnectionConfig} connection
+ * @param {string} user
+ * @param {string} [host] - 仅 MySQL 使用
+ */
+export const listUserPrivileges = (connection, user, host) =>
+	invoke('USER', 'LIST', connection, { user, ...(host ? { host } : {}) });
+
+/**
+ * 查询用户被授权的所有表与权限（按 schema + table 聚合）。
+ * @param {ConnectionConfig} connection
+ * @param {string} user
+ * @param {string} [host] - 仅 MySQL 使用
+ */
+export const listUserGrants = (connection, user, host) =>
+	invoke('USER', 'GRANTS', connection, { user, ...(host ? { host } : {}) });
+
+/**
+ * 创建用户。
+ * @param {ConnectionConfig} connection
+ * @param {string} user
+ * @param {string} password
+ * @param {string} [host] - 仅 MySQL 使用，默认 "%"
+ */
+export const createUser = (connection, user, password, host) =>
+	invoke('USER', 'CREATE', connection, { user, password, ...(host ? { host } : {}) });
+
+/**
+ * 删除用户。
+ * @param {ConnectionConfig} connection
+ * @param {string} user
+ * @param {string} [host] - 仅 MySQL 使用
+ */
+export const deleteUser = (connection, user, host) =>
+	invoke('USER', 'DELETE', connection, { user, ...(host ? { host } : {}) });
+
+/**
  * 授予 / 回收权限。schema 取目标 database 名；privileges 例如 ['SELECT','INSERT']。
  * @param {ConnectionConfig} connection
  * @param {{ user: string; schema: string; privileges: string[]; isGrant: boolean }} payload
  */
 export const updateUserPrivileges = (connection, payload) =>
 	invoke('USER', 'UPDATE', connection, /** @type {Record<string, unknown>} */ (payload));
+
+/**
+ * 修改用户密码。
+ * @param {ConnectionConfig} connection
+ * @param {string} user
+ * @param {string} password
+ * @param {string} [host] - 仅 MySQL 使用
+ */
+export const changeUserPassword = (connection, user, password, host) =>
+	invoke('USER', 'UPDATE', connection, { user, password, ...(host ? { host } : {}) });
 
 // -------- TABLE --------
 
@@ -328,7 +382,12 @@ export const executeSql = (connection, sql) => invoke('SQL', 'EXECUTE', connecti
 export function getSystemInfo() {
 	// SYSTEM/INFO 不需要真实连接，传一个空壳即可
 	const dummyConn = /** @type {ConnectionConfig} */ ({
-		driver: 'Mysql', host: '', port: 0, user: '', password: '', database: ''
+		driver: 'Mysql',
+		host: '',
+		port: 0,
+		user: '',
+		password: '',
+		database: ''
 	});
 	return invoke('SYSTEM', 'INFO', dummyConn);
 }
