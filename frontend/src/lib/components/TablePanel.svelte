@@ -9,6 +9,7 @@
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import MdButton from './MdButton.svelte';
+	import Combobox from './Combobox.svelte';
 
 	/**
 	 * 表结构编辑器：所有改动先落到本地 draft，点"保存"才统一推送到引擎。
@@ -38,11 +39,22 @@
 	let { open, schemaConn, tableName, onClose, onSaved } = $props();
 
 	const TYPE_PRESETS = [
-		'INT', 'BIGINT', 'SMALLINT',
-		'VARCHAR', 'TEXT', 'CHAR',
-		'DECIMAL', 'FLOAT', 'DOUBLE',
-		'DATE', 'DATETIME', 'TIMESTAMP', 'TIME',
-		'BOOLEAN', 'JSON', 'BLOB'
+		'INT',
+		'BIGINT',
+		'SMALLINT',
+		'VARCHAR',
+		'TEXT',
+		'CHAR',
+		'DECIMAL',
+		'FLOAT',
+		'DOUBLE',
+		'DATE',
+		'DATETIME',
+		'TIMESTAMP',
+		'TIME',
+		'BOOLEAN',
+		'JSON',
+		'BLOB'
 	];
 
 	let entries = $state(/** @type {EntryDraft[]} */ ([]));
@@ -208,9 +220,18 @@
 			const adds = entries.filter((e) => e.state === 'added');
 
 			for (const e of drops) {
-				const r = await dropTableColumn(schemaConn, tableName, /** @type {ColumnMeta} */ (e.original).name);
+				const r = await dropTableColumn(
+					schemaConn,
+					tableName,
+					/** @type {ColumnMeta} */ (e.original).name
+				);
 				if (!r.success) {
-					err(r.error ?? get(t)('panel.toast.delete_failed', { name: /** @type {ColumnMeta} */ (e.original).name }));
+					err(
+						r.error ??
+							get(t)('panel.toast.delete_failed', {
+								name: /** @type {ColumnMeta} */ (e.original).name
+							})
+					);
 					await load();
 					return;
 				}
@@ -242,7 +263,11 @@
 
 			ok(
 				drops.length || mods.length || adds.length
-					? get(t)('panel.toast.saved_detail', { del: drops.length, mod: mods.length, add: adds.length })
+					? get(t)('panel.toast.saved_detail', {
+							del: drops.length,
+							mod: mods.length,
+							add: adds.length
+						})
 					: get(t)('panel.toast.saved')
 			);
 			await load();
@@ -285,39 +310,69 @@
 	function stateChip(s) {
 		switch (s) {
 			case 'added':
-				return { label: get(t)('panel.status_new'), bg: 'var(--md-primary-container)', fg: 'var(--md-on-primary-container)' };
+				return {
+					label: get(t)('panel.status_new'),
+					bg: 'var(--md-primary-container)',
+					fg: 'var(--md-on-primary-container)'
+				};
 			case 'modified':
-				return { label: get(t)('panel.status_modified'), bg: 'var(--md-tertiary-container)', fg: 'var(--md-on-tertiary-container)' };
+				return {
+					label: get(t)('panel.status_modified'),
+					bg: 'var(--md-tertiary-container)',
+					fg: 'var(--md-on-tertiary-container)'
+				};
 			case 'dropped':
-				return { label: get(t)('panel.status_deleted'), bg: 'var(--md-error-container, #F9DEDC)', fg: 'var(--md-on-error-container, #410E0B)' };
+				return {
+					label: get(t)('panel.status_deleted'),
+					bg: 'var(--md-error-container, #F9DEDC)',
+					fg: 'var(--md-on-error-container, #410E0B)'
+				};
 			default:
 				return null;
 		}
 	}
 </script>
 
-<Modal {open} title={`${get(t)('panel.edit_title', { table: tableName })}`} size="lg" onClose={tryClose}>
+<Modal
+	{open}
+	title={`${get(t)('panel.edit_title', { table: tableName })}`}
+	size="lg"
+	onClose={tryClose}
+>
 	<div class="flex items-center justify-between pb-2">
 		<span class="text-xs" style="color: var(--md-on-surface-variant);">
-			{$t('panel.total_columns', { count: entries.filter((e) => e.state !== 'dropped').length })}{#if dirty}<span class="ml-2">·</span>
+			{$t('panel.total_columns', {
+				count: entries.filter((e) => e.state !== 'dropped').length
+			})}{#if dirty}<span class="ml-2">·</span>
 				<span class="ml-1" style="color: var(--md-tertiary);">{$t('panel.unsaved')}</span>
 			{/if}
 			{#if pending}<span class="ml-2 animate-pulse">…</span>{/if}
 		</span>
 		<div class="flex items-center gap-1">
-			<MdButton variant="icon" title={$t('panel.reload_hint')} onclick={load} disabled={pending || saving}>↻</MdButton>
+			<MdButton
+				variant="icon"
+				title={$t('panel.reload_hint')}
+				onclick={load}
+				disabled={pending || saving}>↻</MdButton
+			>
 			{#if readOnly}
 				<span class="md-chip" title={$t('datagrid.ro_tooltip')}>{$t('datagrid.ro_readonly')}</span>
 			{:else}
-				<MdButton variant="text" onclick={addColumn} disabled={pending || saving}>{$t('table.add_column')}</MdButton>
+				<MdButton variant="text" onclick={addColumn} disabled={pending || saving}
+					>{$t('table.add_column')}</MdButton
+				>
 			{/if}
 		</div>
 	</div>
 
 	{#if pending && entries.length === 0}
-		<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">{$t('common.loading')}</p>
+		<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">
+			{$t('common.loading')}
+		</p>
 	{:else if entries.length === 0}
-		<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">{$t('panel.no_columns')}</p>
+		<p class="py-6 text-center text-sm" style="color: var(--md-on-surface-variant);">
+			{$t('panel.no_columns')}
+		</p>
 	{:else}
 		<div
 			class="max-h-[60vh] overflow-auto"
@@ -329,14 +384,42 @@
 					style="background: var(--md-surface-container); color: var(--md-on-surface-variant);"
 				>
 					<tr>
-						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant); width: 4.5rem;">{$t('panel.status')}</th>
-						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant);">{$t('panel.column')}</th>
-						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant);">{$t('panel.type')}</th>
-						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant); width: 5rem;">{$t('panel.size')}</th>
-						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant); width: 3.5rem;">{$t('panel.nullable')}</th>
-						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant); width: 3rem;">{$t('panel.primary_key')}</th>
-						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant);">{$t('panel.default')}</th>
-						<th class="px-2 py-2 font-medium" style="border-bottom: 1px solid var(--md-outline-variant); width: 4rem;"></th>
+						<th
+							class="whitespace-nowrap px-2 py-2 font-medium"
+							style="border-bottom: 1px solid var(--md-outline-variant); width: 4.5rem;"
+							>{$t('panel.status')}</th
+						>
+						<th
+							class="whitespace-nowrap px-2 py-2 font-medium"
+							style="border-bottom: 1px solid var(--md-outline-variant);">{$t('panel.column')}</th
+						>
+						<th
+							class="whitespace-nowrap px-2 py-2 font-medium"
+							style="border-bottom: 1px solid var(--md-outline-variant);">{$t('panel.type')}</th
+						>
+						<th
+							class="whitespace-nowrap px-2 py-2 font-medium"
+							style="border-bottom: 1px solid var(--md-outline-variant); width: 5rem;"
+							>{$t('panel.size')}</th
+						>
+						<th
+							class="whitespace-nowrap px-2 py-2 font-medium"
+							style="border-bottom: 1px solid var(--md-outline-variant); width: 3.5rem;"
+							>{$t('panel.nullable')}</th
+						>
+						<th
+							class="whitespace-nowrap px-2 py-2 font-medium"
+							style="border-bottom: 1px solid var(--md-outline-variant); width: 3rem;"
+							>{$t('panel.primary_key')}</th
+						>
+						<th
+							class="whitespace-nowrap px-2 py-2 font-medium"
+							style="border-bottom: 1px solid var(--md-outline-variant);">{$t('panel.default')}</th
+						>
+						<th
+							class="whitespace-nowrap px-2 py-2 font-medium"
+							style="border-bottom: 1px solid var(--md-outline-variant); width: 4rem;"
+						></th>
 					</tr>
 				</thead>
 				<tbody>
@@ -345,23 +428,28 @@
 						{@const droppedRow = e.state === 'dropped'}
 						{@const editable = !readOnly && !droppedRow}
 						<tr
-							style:background={i % 2 === 0 ? 'transparent' : 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}
+							style:background={i % 2 === 0
+								? 'transparent'
+								: 'color-mix(in srgb, var(--md-on-surface) 3%, transparent)'}
 							style:opacity={droppedRow ? 0.55 : 1}
 							style:text-decoration={droppedRow ? 'line-through' : 'none'}
 							oncontextmenu={(ev) => openRowCtx(ev, e)}
 						>
-							<td class="px-2 py-1.5" style="border-bottom: 1px solid var(--md-outline-variant);">
+							<td class="whitespace-nowrap px-2 py-1.5" style="border-bottom: 1px solid var(--md-outline-variant);">
 								{#if chip}
 									<span
 										class="rounded-sm px-1.5 py-0.5 text-[10px] font-medium"
 										style:background={chip.bg}
-										style:color={chip.fg}
-									>{chip.label}</span>
+										style:color={chip.fg}>{chip.label}</span
+									>
 								{:else}
 									<span style="color: var(--md-on-surface-variant);">—</span>
 								{/if}
 							</td>
-							<td class="px-2 py-1 font-mono" style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);">
+							<td
+								class="px-2 py-1 font-mono"
+								style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface);"
+							>
 								<input
 									class="md-input font-mono"
 									style="font-size: 0.75rem; padding: 0.25rem 0.375rem;"
@@ -371,15 +459,16 @@
 									oninput={(ev) => patchDraft(i, { name: ev.currentTarget.value })}
 								/>
 							</td>
-							<td class="px-2 py-1 font-mono" style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface-variant);">
-								<input
-									class="md-input font-mono"
-									style="font-size: 0.75rem; padding: 0.25rem 0.375rem;"
-									type="text"
-									list="md-col-type-presets"
+							<td
+								class="px-2 py-1 font-mono"
+								style="border-bottom: 1px solid var(--md-outline-variant); color: var(--md-on-surface-variant);"
+							>
+								<Combobox
 									value={e.draft.type}
+									options={TYPE_PRESETS}
+									placeholder="VARCHAR"
 									disabled={!editable}
-									oninput={(ev) => patchDraft(i, { type: ev.currentTarget.value })}
+									onchange={(v) => patchDraft(i, { type: v })}
 								/>
 							</td>
 							<td class="px-2 py-1" style="border-bottom: 1px solid var(--md-outline-variant);">
@@ -396,7 +485,10 @@
 									}}
 								/>
 							</td>
-							<td class="px-2 py-1.5 text-center" style="border-bottom: 1px solid var(--md-outline-variant);">
+							<td
+								class="px-2 py-1.5 text-center"
+								style="border-bottom: 1px solid var(--md-outline-variant);"
+							>
 								<input
 									type="checkbox"
 									checked={e.draft.nullable}
@@ -411,7 +503,10 @@
 									<span style="color: var(--md-on-surface-variant);">—</span>
 								{/if}
 							</td>
-							<td class="px-2 py-1 font-mono" style="border-bottom: 1px solid var(--md-outline-variant);">
+							<td
+								class="px-2 py-1 font-mono"
+								style="border-bottom: 1px solid var(--md-outline-variant);"
+							>
 								<input
 									class="md-input font-mono"
 									style="font-size: 0.75rem; padding: 0.25rem 0.375rem;"
@@ -420,19 +515,15 @@
 									disabled={!editable}
 									oninput={(ev) =>
 										patchDraft(i, {
-											defaultValue: ev.currentTarget.value === '' ? undefined : ev.currentTarget.value
+											defaultValue:
+												ev.currentTarget.value === '' ? undefined : ev.currentTarget.value
 										})}
 								/>
 							</td>
 							<td class="px-2 py-1" style="border-bottom: 1px solid var(--md-outline-variant);">
 								{#if !readOnly}
 									{#if droppedRow}
-										<MdButton
-											type="button"
-											variant="text"
-											size="sm"
-											onclick={() => undoDrop(i)}
-										>
+										<MdButton type="button" variant="text" size="sm" onclick={() => undoDrop(i)}>
 											{$t('common.undo')}
 										</MdButton>
 									{:else}
@@ -443,7 +534,9 @@
 											style="color: var(--md-error);"
 											onclick={() => markDrop(i)}
 											disabled={e.original?.isPrimaryKey === true}
-											title={e.original?.isPrimaryKey ? $t('panel.pk_no_delete') : $t('common.delete')}
+											title={e.original?.isPrimaryKey
+												? $t('panel.pk_no_delete')
+												: $t('common.delete')}
 										>
 											{$t('common.delete')}
 										</MdButton>
@@ -456,12 +549,6 @@
 			</table>
 		</div>
 	{/if}
-
-	<datalist id="md-col-type-presets">
-		{#each TYPE_PRESETS as t (t)}
-			<option value={t}></option>
-		{/each}
-	</datalist>
 
 	{#snippet footer()}
 		<MdButton variant="text" onclick={tryClose} disabled={saving}>
@@ -491,7 +578,13 @@
 				x: rowCtx.x,
 				y: rowCtx.y,
 				items: [
-					{ label: $t('sidebar.copy_column'), icon: '⧉', onClick: () => { if (rowCtx) copyText2(rowCtx.entry.draft.name); } },
+					{
+						label: $t('sidebar.copy_column'),
+						icon: '⧉',
+						onClick: () => {
+							if (rowCtx) copyText2(rowCtx.entry.draft.name);
+						}
+					},
 					{
 						label: $t('common.copy'),
 						icon: '⧉',

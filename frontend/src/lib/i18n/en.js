@@ -87,6 +87,8 @@ export const en = {
 	'sidebar.ro_readonly': 'MySQL system schema, read-only',
 	'sidebar.name_label': 'Name',
 	'sidebar.name_placeholder': 'e.g. my_db',
+	'schema.charset': 'Character Set',
+	'schema.collate': 'Collation',
 	'sidebar.resize_hint': 'Drag to resize (double-click to reset)',
 	'sidebar.resize_aria': 'Drag to resize sidebar',
 	'sidebar.toast.schema_failed': 'Failed to load schema',
@@ -195,6 +197,11 @@ export const en = {
 	'table.toast.empty_col_type': 'Type for column {name} cannot be empty',
 	'table.toast.create_failed': 'Failed to create table',
 	'table.toast.created': 'Created {schema}.{name}',
+	'table.options': 'Table Options',
+	'table.engine': 'Engine',
+	'table.charset': 'Character Set',
+	'table.collate': 'Collation',
+	'table.comment': 'Comment',
 
 	// ---- Table Structure Panel ----
 	'panel.edit_title': 'Modify table structure · {table}',

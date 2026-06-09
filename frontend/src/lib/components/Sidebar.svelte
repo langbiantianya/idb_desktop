@@ -1,5 +1,13 @@
 <script>
-	import { listSchemas, listTables, listColumns, createSchema, deleteSchema, deleteTable, getTableDdl } from '$lib/api';
+	import {
+		listSchemas,
+		listTables,
+		listColumns,
+		createSchema,
+		deleteSchema,
+		deleteTable,
+		getTableDdl
+	} from '$lib/api';
 	import { asStringList, asTableList, asColumnList } from '$lib/api/normalize.js';
 	import { ok, err } from '$lib/stores/toasts.js';
 	import { isReadOnlySchema } from '$lib/readonly.js';
@@ -10,6 +18,7 @@
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import MdButton from './MdButton.svelte';
+	import Combobox from './Combobox.svelte';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
@@ -56,7 +65,30 @@
 
 	let creating = $state(false);
 	let newName = $state('');
+	let newCharset = $state('utf8mb4');
+	let newCollate = $state('utf8mb4_unicode_ci');
 	let createPending = $state(false);
+
+	let isMysql = $derived(baseConn.driver === 'Mysql');
+
+	// MySQL 常见 charset → collation 映射
+	const CHARSET_OPTIONS = ['utf8mb4', 'utf8', 'latin1', 'ascii', 'utf16', 'binary'];
+	const COLLATE_MAP = {
+		utf8mb4: ['utf8mb4_unicode_ci', 'utf8mb4_general_ci', 'utf8mb4_0900_ai_ci', 'utf8mb4_bin'],
+		utf8: ['utf8_general_ci', 'utf8_unicode_ci', 'utf8_bin'],
+		latin1: ['latin1_swedish_ci', 'latin1_general_ci', 'latin1_bin'],
+		ascii: ['ascii_general_ci', 'ascii_bin'],
+		utf16: ['utf16_general_ci', 'utf16_unicode_ci', 'utf16_bin'],
+		binary: ['binary']
+	};
+	let collateOptions = $derived(COLLATE_MAP[newCharset] || []);
+
+	// charset 切换时重置 collate 为该 charset 的首个选项
+	$effect(() => {
+		if (newCharset && collateOptions.length > 0 && !collateOptions.includes(newCollate)) {
+			newCollate = collateOptions[0];
+		}
+	});
 
 	let confirming = $state(/** @type {string | null} */ (null));
 	let deletePending = $state(false);
@@ -152,10 +184,16 @@
 			const nextTE = { ...tableExpanded };
 			let dirty = false;
 			for (const k of Object.keys(nextCols)) {
-				if (k.startsWith(prefix)) { delete nextCols[k]; dirty = true; }
+				if (k.startsWith(prefix)) {
+					delete nextCols[k];
+					dirty = true;
+				}
 			}
 			for (const k of Object.keys(nextTE)) {
-				if (k.startsWith(prefix)) { delete nextTE[k]; dirty = true; }
+				if (k.startsWith(prefix)) {
+					delete nextTE[k];
+					dirty = true;
+				}
 			}
 			if (dirty) {
 				columnsByTable = nextCols;
@@ -202,7 +240,8 @@
 		if (!name) return;
 		createPending = true;
 		try {
-			const resp = await createSchema(baseConn, name);
+			const opts = isMysql ? { charset: newCharset, collate: newCollate } : undefined;
+			const resp = await createSchema(baseConn, name, opts);
 			if (!resp.success) {
 				err(resp.error ?? get(t)('sidebar.toast.create_failed'));
 				return;
@@ -210,6 +249,8 @@
 			ok(get(t)('sidebar.toast.created', { name }));
 			creating = false;
 			newName = '';
+			newCharset = 'utf8mb4';
+			newCollate = 'utf8mb4_unicode_ci';
 			await refreshSchemas();
 		} finally {
 			createPending = false;
@@ -420,33 +461,80 @@
 			const items = [
 				{ label: $t('sidebar.refresh'), icon: '↻', onClick: () => menuRefreshSchema(menu.schema) }
 			];
-			if (!ro) items.push({ label: $t('sidebar.new_table'), icon: '＋', onClick: () => menuCreateTable(menu.schema) });
-			items.push({ label: $t('sidebar.copy_ref'), icon: '⧉', onClick: () => menuCopySchemaRef(menu.schema) });
+			if (!ro)
+				items.push({
+					label: $t('sidebar.new_table'),
+					icon: '＋',
+					onClick: () => menuCreateTable(menu.schema)
+				});
+			items.push({
+				label: $t('sidebar.copy_ref'),
+				icon: '⧉',
+				onClick: () => menuCopySchemaRef(menu.schema)
+			});
 			if (!ro) {
 				items.push(null);
-				items.push({ label: $t('sidebar.delete_schema'), icon: '✕', danger: true, onClick: () => menuDeleteSchema(menu.schema) });
+				items.push({
+					label: $t('sidebar.delete_schema'),
+					icon: '✕',
+					danger: true,
+					onClick: () => menuDeleteSchema(menu.schema)
+				});
 			}
 			return items;
 		}
 		if (menu.kind === 'table') {
 			const ro = isReadOnlySchema(baseConn, menu.schema);
 			const items = [
-				{ label: $t('sidebar.open_data'), icon: '▦', onClick: () => menuOpenTable(menu.schema, menu.table) },
-				{ label: $t('sidebar.modify_table'), icon: '⊞', onClick: () => menuInspectTable(menu.schema, menu.table) },
-				{ label: $t('sidebar.refresh_tables'), icon: '↻', onClick: () => menuRefreshSchema(menu.schema) },
-				{ label: $t('sidebar.copy_ref'), icon: '⧉', onClick: () => menuCopyTableRef(menu.schema, menu.table) },
-				{ label: $t('sidebar.copy_ddl'), icon: '⊕', onClick: () => menuCopyDdl(menu.schema, menu.table) }
+				{
+					label: $t('sidebar.open_data'),
+					icon: '▦',
+					onClick: () => menuOpenTable(menu.schema, menu.table)
+				},
+				{
+					label: $t('sidebar.modify_table'),
+					icon: '⊞',
+					onClick: () => menuInspectTable(menu.schema, menu.table)
+				},
+				{
+					label: $t('sidebar.refresh_tables'),
+					icon: '↻',
+					onClick: () => menuRefreshSchema(menu.schema)
+				},
+				{
+					label: $t('sidebar.copy_ref'),
+					icon: '⧉',
+					onClick: () => menuCopyTableRef(menu.schema, menu.table)
+				},
+				{
+					label: $t('sidebar.copy_ddl'),
+					icon: '⊕',
+					onClick: () => menuCopyDdl(menu.schema, menu.table)
+				}
 			];
 			if (!ro) {
 				items.push(null);
-				items.push({ label: $t('sidebar.delete_table'), icon: '✕', danger: true, onClick: () => menuDeleteTable(menu.schema, menu.table) });
+				items.push({
+					label: $t('sidebar.delete_table'),
+					icon: '✕',
+					danger: true,
+					onClick: () => menuDeleteTable(menu.schema, menu.table)
+				});
 			}
 			return items;
 		}
 		// column
 		return [
-			{ label: $t('sidebar.copy_column'), icon: '⧉', onClick: () => menuCopyColumnName(menu.column) },
-			{ label: $t('sidebar.copy_qualified'), icon: '⧉', onClick: () => menuCopyColumnRef(menu.schema, menu.table, menu.column) }
+			{
+				label: $t('sidebar.copy_column'),
+				icon: '⧉',
+				onClick: () => menuCopyColumnName(menu.column)
+			},
+			{
+				label: $t('sidebar.copy_qualified'),
+				icon: '⧉',
+				onClick: () => menuCopyColumnRef(menu.schema, menu.table, menu.column)
+			}
 		];
 	});
 </script>
@@ -458,10 +546,7 @@
 	style="background: var(--md-surface-container-low); border-color: var(--md-outline-variant);"
 >
 	{#if collapsed}
-		<div
-			class="flex h-full flex-col items-center gap-2 py-2"
-			style="border-right: none;"
-		>
+		<div class="flex h-full flex-col items-center gap-2 py-2" style="border-right: none;">
 			<MdButton
 				variant="icon"
 				title={$t('sidebar.expand')}
@@ -470,7 +555,10 @@
 			>
 				»
 			</MdButton>
-			<span class="mt-1 text-[10px] tracking-widest" style="writing-mode: vertical-rl; color: var(--md-on-surface-variant);">DATABASE</span>
+			<span
+				class="mt-1 text-[10px] tracking-widest"
+				style="writing-mode: vertical-rl; color: var(--md-on-surface-variant);">DATABASE</span
+			>
 		</div>
 	{:else}
 		<!-- Sidebar header -->
@@ -514,275 +602,306 @@
 			</div>
 		</div>
 
-	<!-- Filter -->
-	<div class="px-3 py-2">
-		<input
-			type="text"
-			class="md-input w-full text-xs"
-			placeholder={$t('sidebar.filter_placeholder')}
-			bind:value={filter}
-		/>
-	</div>
+		<!-- Filter -->
+		<div class="px-3 py-2">
+			<input
+				type="text"
+				class="w-full md-input text-xs"
+				placeholder={$t('sidebar.filter_placeholder')}
+				bind:value={filter}
+			/>
+		</div>
 
-	<!-- Connection node -->
-	<div
-		class="mx-2 mb-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-xs"
-		style="background: var(--md-surface-container); color: var(--md-on-surface-variant);"
-	>
-		<span style="color: var(--md-primary);">●</span>
-		<span class="truncate font-mono">
-			{baseConn.driver}://{baseConn.user}@{baseConn.host}:{baseConn.port}
-		</span>
-	</div>
+		<!-- Connection node -->
+		<div
+			class="mx-2 mb-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-xs"
+			style="background: var(--md-surface-container); color: var(--md-on-surface-variant);"
+		>
+			<span style="color: var(--md-primary);">●</span>
+			<span class="truncate font-mono">
+				{baseConn.driver}://{baseConn.user}@{baseConn.host}:{baseConn.port}
+			</span>
+		</div>
 
-	<!-- Schema tree -->
-	<div class="flex-1 overflow-auto px-1 pb-3">
-		{#if filteredSchemas.length === 0 && !pending}
-			<p class="px-3 py-4 text-center text-xs" style="color: var(--md-on-surface-variant);">
-				{filter ? $t('sidebar.no_match') : $t('sidebar.no_visible_schema')}
-			</p>
-		{:else}
-			<ul class="flex flex-col gap-px">
-				{#each filteredSchemas as s (s)}
-					<li>
-						<!-- schema row -->
-						<div
-							role="button"
-							tabindex="0"
-							class="group flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm transition"
-							style:background={selectedSchema === s
-								? 'var(--md-secondary-container)'
-								: 'transparent'}
-							style:color={selectedSchema === s
-								? 'var(--md-on-secondary-container)'
-								: 'var(--md-on-surface)'}
-							onmouseenter={(e) =>
-								selectedSchema !== s &&
-								(e.currentTarget.style.background =
-									'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
-							onmouseleave={(e) =>
-								selectedSchema !== s && (e.currentTarget.style.background = 'transparent')}
-							onclick={() => {
-								// 已经选中再次点击 → 折叠 / 展开切换；切换到新 schema 默认展开
-								if (selectedSchema === s) {
-									toggle(s);
-								} else {
-									onSelectSchema(s);
-									toggle(s, true);
-								}
-							}}
-							onkeydown={(e) => {
-								if (e.key === 'Enter' || e.key === ' ') {
-									e.preventDefault();
+		<!-- Schema tree -->
+		<div class="flex-1 overflow-auto px-1 pb-3">
+			{#if filteredSchemas.length === 0 && !pending}
+				<p class="px-3 py-4 text-center text-xs" style="color: var(--md-on-surface-variant);">
+					{filter ? $t('sidebar.no_match') : $t('sidebar.no_visible_schema')}
+				</p>
+			{:else}
+				<ul class="flex flex-col gap-px">
+					{#each filteredSchemas as s (s)}
+						<li>
+							<!-- schema row -->
+							<div
+								role="button"
+								tabindex="0"
+								class="group flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm transition"
+								style:background={selectedSchema === s
+									? 'var(--md-secondary-container)'
+									: 'transparent'}
+								style:color={selectedSchema === s
+									? 'var(--md-on-secondary-container)'
+									: 'var(--md-on-surface)'}
+								onmouseenter={(e) =>
+									selectedSchema !== s &&
+									(e.currentTarget.style.background =
+										'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
+								onmouseleave={(e) =>
+									selectedSchema !== s && (e.currentTarget.style.background = 'transparent')}
+								onclick={() => {
+									// 已经选中再次点击 → 折叠 / 展开切换；切换到新 schema 默认展开
 									if (selectedSchema === s) {
 										toggle(s);
 									} else {
 										onSelectSchema(s);
 										toggle(s, true);
 									}
-								}
-							}}
-							oncontextmenu={(e) => openSchemaMenu(e, s)}
-						>
-							<span
-								class="inline-block w-3 text-center text-[10px] transition-transform"
-								style:transform={expanded[s] ? 'rotate(90deg)' : 'rotate(0deg)'}
-								onclick={(e) => {
-									e.stopPropagation();
-									toggle(s);
 								}}
 								onkeydown={(e) => {
 									if (e.key === 'Enter' || e.key === ' ') {
 										e.preventDefault();
-										e.stopPropagation();
-										toggle(s);
+										if (selectedSchema === s) {
+											toggle(s);
+										} else {
+											onSelectSchema(s);
+											toggle(s, true);
+										}
 									}
 								}}
-								role="button"
-								tabindex="-1"
+								oncontextmenu={(e) => openSchemaMenu(e, s)}
 							>
-								▶
-							</span>
-							<span class="text-xs" style="color: var(--md-primary);">DB</span>
-							<span class="flex-1 truncate font-mono text-xs">{s}</span>
-							{#if isReadOnlySchema(baseConn, s)}
-								<span class="md-chip" title={$t('sidebar.ro_readonly')}>RO</span>
-							{:else}
-								<MdButton
-									variant="icon"
-									class="opacity-0 group-hover:opacity-100"
-									style="width: 1.25rem; height: 1.25rem;"
-									title={$t('sidebar.new_table')}
+								<span
+									class="inline-block w-3 text-center text-[10px] transition-transform"
+									style:transform={expanded[s] ? 'rotate(90deg)' : 'rotate(0deg)'}
 									onclick={(e) => {
 										e.stopPropagation();
-										onCreateTable?.(s);
+										toggle(s);
 									}}
-								>
-									<span style="color: var(--md-primary); font-size: 0.75rem;">＋</span>
-								</MdButton>
-								<MdButton
-									variant="icon"
-									class="opacity-0 group-hover:opacity-100"
-									style="width: 1.25rem; height: 1.25rem;"
-									title={$t('common.delete')}
-									onclick={(e) => {
-										e.stopPropagation();
-										confirming = s;
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											e.stopPropagation();
+											toggle(s);
+										}
 									}}
+									role="button"
+									tabindex="-1"
 								>
-									<span style="color: var(--md-error); font-size: 0.75rem;">✕</span>
-								</MdButton>
-							{/if}
-						</div>
-
-						<!-- table children -->
-						{#if expanded[s]}
-							<ul class="ml-6 flex flex-col gap-px border-l" style="border-color: var(--md-outline-variant);">
-								{#if loading[s]}
-									<li class="px-3 py-1 text-xs" style="color: var(--md-on-surface-variant);">
-										{$t('common.loading')}
-									</li>
-								{:else if tablesIn(s).length === 0}
-									<li class="px-3 py-1 text-xs" style="color: var(--md-on-surface-variant);">
-										{filter && tablesBySchema[s]?.length ? $t('sidebar.no_match') : $t('sidebar.empty_schema')}
-									</li>
+									▶
+								</span>
+								<span class="text-xs" style="color: var(--md-primary);">DB</span>
+								<span class="flex-1 truncate font-mono text-xs">{s}</span>
+								{#if isReadOnlySchema(baseConn, s)}
+									<span class="md-chip" title={$t('sidebar.ro_readonly')}>RO</span>
 								{:else}
-									{#each tablesIn(s) as tbl (tbl.name)}
-										{@const tk = `${s}.${tbl.name}`}
-										<li>
-											<div
-												role="button"
-												tabindex="0"
-												class="group/row flex w-full cursor-pointer items-center gap-1 rounded-md py-1 pr-1 pl-1 text-left text-xs transition"
-												style:background={selectedSchema === s && selectedTable === tbl.name
-													? 'var(--md-primary-container)'
-													: 'transparent'}
-												style:color={selectedSchema === s && selectedTable === tbl.name
-													? 'var(--md-on-primary-container)'
-													: 'var(--md-on-surface)'}
-												onmouseenter={(e) =>
-													!(selectedSchema === s && selectedTable === tbl.name) &&
-													(e.currentTarget.style.background =
-														'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
-												onmouseleave={(e) =>
-													!(selectedSchema === s && selectedTable === tbl.name) &&
-													(e.currentTarget.style.background = 'transparent')}
-												onclick={() => onSelectTable(s, tbl.name)}
-												ondblclick={() => onSelectTable(s, tbl.name)}
-												onkeydown={(e) => {
-													if (e.key === 'Enter' || e.key === ' ') {
-														e.preventDefault();
-														onSelectTable(s, tbl.name);
-													}
-												}}
-												oncontextmenu={(e) => openTableMenu(e, s, tbl.name)}
-											>
-												<span
-													class="inline-block w-3 text-center text-[10px] transition-transform"
-													style:transform={tableExpanded[tk] ? 'rotate(90deg)' : 'rotate(0deg)'}
-													onclick={(e) => {
-														e.stopPropagation();
-														toggleTable(s, tbl.name);
-													}}
+									<MdButton
+										variant="icon"
+										class="opacity-0 group-hover:opacity-100"
+										style="width: 1.25rem; height: 1.25rem;"
+										title={$t('sidebar.new_table')}
+										onclick={(e) => {
+											e.stopPropagation();
+											onCreateTable?.(s);
+										}}
+									>
+										<span style="color: var(--md-primary); font-size: 0.75rem;">＋</span>
+									</MdButton>
+									<MdButton
+										variant="icon"
+										class="opacity-0 group-hover:opacity-100"
+										style="width: 1.25rem; height: 1.25rem;"
+										title={$t('common.delete')}
+										onclick={(e) => {
+											e.stopPropagation();
+											confirming = s;
+										}}
+									>
+										<span style="color: var(--md-error); font-size: 0.75rem;">✕</span>
+									</MdButton>
+								{/if}
+							</div>
+
+							<!-- table children -->
+							{#if expanded[s]}
+								<ul
+									class="ml-6 flex flex-col gap-px border-l"
+									style="border-color: var(--md-outline-variant);"
+								>
+									{#if loading[s]}
+										<li class="px-3 py-1 text-xs" style="color: var(--md-on-surface-variant);">
+											{$t('common.loading')}
+										</li>
+									{:else if tablesIn(s).length === 0}
+										<li class="px-3 py-1 text-xs" style="color: var(--md-on-surface-variant);">
+											{filter && tablesBySchema[s]?.length
+												? $t('sidebar.no_match')
+												: $t('sidebar.empty_schema')}
+										</li>
+									{:else}
+										{#each tablesIn(s) as tbl (tbl.name)}
+											{@const tk = `${s}.${tbl.name}`}
+											<li>
+												<div
+													role="button"
+													tabindex="0"
+													class="group/row flex w-full cursor-pointer items-center gap-1 rounded-md py-1 pr-1 pl-1 text-left text-xs transition"
+													style:background={selectedSchema === s && selectedTable === tbl.name
+														? 'var(--md-primary-container)'
+														: 'transparent'}
+													style:color={selectedSchema === s && selectedTable === tbl.name
+														? 'var(--md-on-primary-container)'
+														: 'var(--md-on-surface)'}
+													onmouseenter={(e) =>
+														!(selectedSchema === s && selectedTable === tbl.name) &&
+														(e.currentTarget.style.background =
+															'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
+													onmouseleave={(e) =>
+														!(selectedSchema === s && selectedTable === tbl.name) &&
+														(e.currentTarget.style.background = 'transparent')}
+													onclick={() => onSelectTable(s, tbl.name)}
+													ondblclick={() => onSelectTable(s, tbl.name)}
 													onkeydown={(e) => {
 														if (e.key === 'Enter' || e.key === ' ') {
 															e.preventDefault();
-															e.stopPropagation();
-															toggleTable(s, tbl.name);
+															onSelectTable(s, tbl.name);
 														}
 													}}
-													role="button"
-													tabindex="-1"
+													oncontextmenu={(e) => openTableMenu(e, s, tbl.name)}
 												>
-													▶
-												</span>
-												<span class="text-[10px]" style="color: var(--md-tertiary-container); filter: brightness(0.7);">
-													▦
-												</span>
-												<span class="flex-1 truncate font-mono">{tbl.name}</span>
-												{#if tbl.type !== 'TABLE'}
-													<span class="md-chip">{tbl.type}</span>
-												{/if}
-												<MdButton
-													variant="icon"
-													class="opacity-0 group-hover/row:opacity-100"
-													style="width: 1.125rem; height: 1.125rem;"
-													title={$t('sidebar.modify_table')}
-													onclick={(e) => {
-														e.stopPropagation();
-														onInspectTable?.(s, tbl.name);
-													}}
-												>
-													<span style="color: var(--md-on-surface-variant); font-size: 0.625rem;">⊞</span>
-												</MdButton>
-												{#if !isReadOnlySchema(baseConn, s)}
+													<span
+														class="inline-block w-3 text-center text-[10px] transition-transform"
+														style:transform={tableExpanded[tk] ? 'rotate(90deg)' : 'rotate(0deg)'}
+														onclick={(e) => {
+															e.stopPropagation();
+															toggleTable(s, tbl.name);
+														}}
+														onkeydown={(e) => {
+															if (e.key === 'Enter' || e.key === ' ') {
+																e.preventDefault();
+																e.stopPropagation();
+																toggleTable(s, tbl.name);
+															}
+														}}
+														role="button"
+														tabindex="-1"
+													>
+														▶
+													</span>
+													<span
+														class="text-[10px]"
+														style="color: var(--md-tertiary-container); filter: brightness(0.7);"
+													>
+														▦
+													</span>
+													<span class="flex-1 truncate font-mono">{tbl.name}</span>
+													{#if tbl.type !== 'TABLE'}
+														<span class="md-chip">{tbl.type}</span>
+													{/if}
 													<MdButton
 														variant="icon"
 														class="opacity-0 group-hover/row:opacity-100"
 														style="width: 1.125rem; height: 1.125rem;"
-														title={$t('sidebar.delete_table')}
+														title={$t('sidebar.modify_table')}
 														onclick={(e) => {
 															e.stopPropagation();
-															confirmingTable = { schema: s, table: tbl.name };
+															onInspectTable?.(s, tbl.name);
 														}}
 													>
-														<span style="color: var(--md-error); font-size: 0.625rem;">✕</span>
+														<span style="color: var(--md-on-surface-variant); font-size: 0.625rem;"
+															>⊞</span
+														>
 													</MdButton>
-												{/if}
-											</div>
-
-											{#if tableExpanded[tk]}
-												<ul class="ml-5 flex flex-col gap-px border-l" style="border-color: var(--md-outline-variant);">
-													{#if colsLoading[tk]}
-														<li class="px-3 py-1 text-[11px]" style="color: var(--md-on-surface-variant);">
-															{$t('common.loading')}
-														</li>
-													{:else if (columnsByTable[tk] ?? []).length === 0}
-														<li class="px-3 py-1 text-[11px]" style="color: var(--md-on-surface-variant);">
-															{$t('sidebar.no_columns')}
-														</li>
-													{:else}
-														{#each columnsByTable[tk] as c (c.name)}
-															<li
-																role="button"
-																tabindex="0"
-																class="flex w-full cursor-default items-center gap-1.5 rounded-md py-0.5 pr-2 pl-2 text-left text-[11px] transition"
-																onmouseenter={(e) =>
-																	(e.currentTarget.style.background =
-																		'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
-																onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
-																ondblclick={() => void copyText(quoteIdent(c.name))}
-																onkeydown={(e) => {
-																	if (e.key === 'Enter') {
-																		e.preventDefault();
-																		void copyText(quoteIdent(c.name));
-																	}
-																}}
-																oncontextmenu={(e) => openColumnMenu(e, s, t.name, c.name)}
-																title={`${c.name} : ${c.type}${c.size ? `(${c.size})` : ''}${c.nullable === false ? ' NOT NULL' : ''}${c.isPrimaryKey ? ' PK' : ''}`}
-															>
-																<span class="text-[10px]" style:color={c.isPrimaryKey ? 'var(--md-tertiary)' : 'var(--md-on-surface-variant)'}>
-																	{c.isPrimaryKey ? '◆' : '·'}
-																</span>
-																<span class="truncate font-mono" style="color: var(--md-on-surface);">{c.name}</span>
-																<span class="ml-auto truncate font-mono text-[10px]" style="color: var(--md-on-surface-variant); max-width: 8rem;">
-																	{c.type}{c.size ? `(${c.size})` : ''}
-																</span>
-															</li>
-														{/each}
+													{#if !isReadOnlySchema(baseConn, s)}
+														<MdButton
+															variant="icon"
+															class="opacity-0 group-hover/row:opacity-100"
+															style="width: 1.125rem; height: 1.125rem;"
+															title={$t('sidebar.delete_table')}
+															onclick={(e) => {
+																e.stopPropagation();
+																confirmingTable = { schema: s, table: tbl.name };
+															}}
+														>
+															<span style="color: var(--md-error); font-size: 0.625rem;">✕</span>
+														</MdButton>
 													{/if}
-												</ul>
-											{/if}
-										</li>
-									{/each}
-								{/if}
-							</ul>
-						{/if}
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</div>
+												</div>
+
+												{#if tableExpanded[tk]}
+													<ul
+														class="ml-5 flex flex-col gap-px border-l"
+														style="border-color: var(--md-outline-variant);"
+													>
+														{#if colsLoading[tk]}
+															<li
+																class="px-3 py-1 text-[11px]"
+																style="color: var(--md-on-surface-variant);"
+															>
+																{$t('common.loading')}
+															</li>
+														{:else if (columnsByTable[tk] ?? []).length === 0}
+															<li
+																class="px-3 py-1 text-[11px]"
+																style="color: var(--md-on-surface-variant);"
+															>
+																{$t('sidebar.no_columns')}
+															</li>
+														{:else}
+															{#each columnsByTable[tk] as c (c.name)}
+																<li
+																	role="button"
+																	tabindex="0"
+																	class="flex w-full cursor-default items-center gap-1.5 rounded-md py-0.5 pr-2 pl-2 text-left text-[11px] transition"
+																	onmouseenter={(e) =>
+																		(e.currentTarget.style.background =
+																			'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
+																	onmouseleave={(e) =>
+																		(e.currentTarget.style.background = 'transparent')}
+																	ondblclick={() => void copyText(quoteIdent(c.name))}
+																	onkeydown={(e) => {
+																		if (e.key === 'Enter') {
+																			e.preventDefault();
+																			void copyText(quoteIdent(c.name));
+																		}
+																	}}
+																	oncontextmenu={(e) => openColumnMenu(e, s, t.name, c.name)}
+																	title={`${c.name} : ${c.type}${c.size ? `(${c.size})` : ''}${c.nullable === false ? ' NOT NULL' : ''}${c.isPrimaryKey ? ' PK' : ''}`}
+																>
+																	<span
+																		class="text-[10px]"
+																		style:color={c.isPrimaryKey
+																			? 'var(--md-tertiary)'
+																			: 'var(--md-on-surface-variant)'}
+																	>
+																		{c.isPrimaryKey ? '◆' : '·'}
+																	</span>
+																	<span
+																		class="truncate font-mono"
+																		style="color: var(--md-on-surface);">{c.name}</span
+																	>
+																	<span
+																		class="ml-auto truncate font-mono text-[10px]"
+																		style="color: var(--md-on-surface-variant); max-width: 8rem;"
+																	>
+																		{c.type}{c.size ? `(${c.size})` : ''}
+																	</span>
+																</li>
+															{/each}
+														{/if}
+													</ul>
+												{/if}
+											</li>
+										{/each}
+									{/if}
+								</ul>
+							{/if}
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
 	{/if}
 
 	{#if !collapsed}
@@ -798,11 +917,37 @@
 </aside>
 
 <!-- 创建 schema -->
-<Modal open={creating} title={$t('sidebar.new_schema')} size="sm" onClose={() => (creating = false)}>
-	<label class="flex flex-col gap-1 text-sm">
-		<span style="color: var(--md-on-surface-variant);">{$t('sidebar.name_label')}</span>
-		<input class="md-input" type="text" bind:value={newName} placeholder={$t('sidebar.name_placeholder')} />
-	</label>
+<Modal
+	open={creating}
+	title={$t('sidebar.new_schema')}
+	size="sm"
+	onClose={() => (creating = false)}
+>
+	<div class="flex flex-col gap-4">
+		<label class="flex flex-col gap-1 text-sm">
+			<span style="color: var(--md-on-surface-variant);">{$t('sidebar.name_label')}</span>
+			<input
+				class="md-input"
+				type="text"
+				bind:value={newName}
+				placeholder={$t('sidebar.name_placeholder')}
+			/>
+		</label>
+		{#if isMysql}
+			<label class="flex flex-col gap-1 text-sm">
+				<span style="color: var(--md-on-surface-variant);">{$t('schema.charset')}</span>
+				<Combobox bind:value={newCharset} options={CHARSET_OPTIONS} placeholder="utf8mb4" />
+			</label>
+			<label class="flex flex-col gap-1 text-sm">
+				<span style="color: var(--md-on-surface-variant);">{$t('schema.collate')}</span>
+				<Combobox
+					bind:value={newCollate}
+					options={collateOptions}
+					placeholder="utf8mb4_unicode_ci"
+				/>
+			</label>
+		{/if}
+	</div>
 	{#snippet footer()}
 		<MdButton variant="text" onclick={() => (creating = false)} disabled={createPending}>
 			{$t('common.cancel')}
@@ -828,7 +973,10 @@
 	open={confirmingTable !== null}
 	title={$t('sidebar.dialog.delete_table_title')}
 	message={confirmingTable
-		? $t('sidebar.dialog.delete_table_msg', { schema: confirmingTable.schema, table: confirmingTable.table })
+		? $t('sidebar.dialog.delete_table_msg', {
+				schema: confirmingTable.schema,
+				table: confirmingTable.table
+			})
 		: ''}
 	confirmText={$t('common.delete')}
 	danger
@@ -838,10 +986,7 @@
 />
 
 <!-- 右键菜单 -->
-<ContextMenu
-	open={menu ? { x: menu.x, y: menu.y, items: menuItems } : null}
-	onClose={closeMenu}
-/>
+<ContextMenu open={menu ? { x: menu.x, y: menu.y, items: menuItems } : null} onClose={closeMenu} />
 
 <style>
 	.resize-handle {

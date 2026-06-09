@@ -87,6 +87,8 @@ export const ja = {
 	'sidebar.ro_readonly': 'MySQL システムスキーマ、読み取り専用',
 	'sidebar.name_label': '名前',
 	'sidebar.name_placeholder': '例: my_db',
+	'schema.charset': '文字セット',
+	'schema.collate': '照合順序',
 	'sidebar.resize_hint': 'ドラッグで幅を調整（ダブルクリックでリセット）',
 	'sidebar.resize_aria': 'ドラッグでサイドバーの幅を調整',
 	'sidebar.toast.schema_failed': 'スキーマの読み込みに失敗しました',
@@ -195,6 +197,11 @@ export const ja = {
 	'table.toast.empty_col_type': '列 {name} の型を空にすることはできません',
 	'table.toast.create_failed': 'テーブルの作成に失敗しました',
 	'table.toast.created': '{schema}.{name} を作成しました',
+	'table.options': 'テーブルオプション',
+	'table.engine': 'ストレージエンジン',
+	'table.charset': '文字セット',
+	'table.collate': '照合順序',
+	'table.comment': 'コメント',
 
 	// ---- テーブル構造パネル ----
 	'panel.edit_title': 'テーブル構造の変更 · {table}',

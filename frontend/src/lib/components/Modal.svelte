@@ -29,7 +29,8 @@
 		style="background: color-mix(in srgb, var(--md-scrim) 40%, transparent);"
 	>
 		<div
-			class="mt-16 flex w-full {widths[size] ?? widths.md} flex-col gap-4 p-6"
+			class="mt-16 flex w-full {widths[size] ??
+				widths.md} max-h-[calc(100vh-8rem)] flex-col gap-4 overflow-y-auto p-6"
 			style="background: var(--md-surface-container-high); color: var(--md-on-surface); border-radius: var(--md-radius-lg); box-shadow: var(--md-elev-3);"
 			role="dialog"
 			aria-modal="true"
@@ -37,11 +38,7 @@
 			{#if title}
 				<header class="flex items-start justify-between">
 					<h2 class="text-base font-semibold" style="color: var(--md-on-surface);">{title}</h2>
-					<MdButton
-						variant="icon"
-						onclick={onClose}
-						ariaLabel={$t('common.close_label')}
-					>
+					<MdButton variant="icon" onclick={onClose} ariaLabel={$t('common.close_label')}>
 						✕
 					</MdButton>
 				</header>

@@ -87,6 +87,8 @@ export const ru = {
 	'sidebar.ro_readonly': 'Системная схема MySQL, только чтение',
 	'sidebar.name_label': 'Имя',
 	'sidebar.name_placeholder': 'Например, my_db',
+	'schema.charset': 'Набор символов',
+	'schema.collate': 'Сопоставление',
 	'sidebar.resize_hint': 'Перетащите для изменения ширины (двойной щелчок для сброса)',
 	'sidebar.resize_aria': 'Перетащите для изменения ширины боковой панели',
 	'sidebar.toast.schema_failed': 'Не удалось загрузить схему',
@@ -195,6 +197,11 @@ export const ru = {
 	'table.toast.empty_col_type': 'Тип столбца {name} не может быть пустым',
 	'table.toast.create_failed': 'Не удалось создать таблицу',
 	'table.toast.created': '{schema}.{name} создана',
+	'table.options': 'Параметры таблицы',
+	'table.engine': 'Движок',
+	'table.charset': 'Набор символов',
+	'table.collate': 'Сопоставление',
+	'table.comment': 'Комментарий',
 
 	// ---- Панель структуры таблицы ----
 	'panel.edit_title': 'Изменение структуры таблицы · {table}',

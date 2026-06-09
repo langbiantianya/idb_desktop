@@ -87,6 +87,8 @@ export const zhCN = {
 	'sidebar.ro_readonly': 'MySQL 系统库，只读',
 	'sidebar.name_label': '名称',
 	'sidebar.name_placeholder': '例如 my_db',
+	'schema.charset': '字符集',
+	'schema.collate': '排序规则',
 	'sidebar.resize_hint': '拖拽调整宽度（双击重置）',
 	'sidebar.resize_aria': '拖拽调整侧栏宽度',
 	'sidebar.toast.schema_failed': '加载 schema 失败',
@@ -195,6 +197,11 @@ export const zhCN = {
 	'table.toast.empty_col_type': '列 {name} 的类型不能为空',
 	'table.toast.create_failed': '创建表失败',
 	'table.toast.created': '已创建 {schema}.{name}',
+	'table.options': '表选项',
+	'table.engine': '存储引擎',
+	'table.charset': '字符集',
+	'table.collate': '排序规则',
+	'table.comment': '表注释',
 
 	// ---- 表结构面板 ----
 	'panel.edit_title': '修改表结构 · {table}',

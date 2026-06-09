@@ -174,8 +174,13 @@ export async function invokeStreaming(category, action, connection, payload, onR
 /** @param {ConnectionConfig} connection */
 export const listSchemas = (connection) => invoke('SCHEMA', 'LIST', connection);
 
-/** @param {ConnectionConfig} connection @param {string} name */
-export const createSchema = (connection, name) => invoke('SCHEMA', 'CREATE', connection, { name });
+/**
+ * @param {ConnectionConfig} connection
+ * @param {string} name
+ * @param {{ charset?: string; collate?: string }} [options]
+ */
+export const createSchema = (connection, name, options) =>
+	invoke('SCHEMA', 'CREATE', connection, { name, ...(options ? { options } : {}) });
 
 /** @param {ConnectionConfig} connection @param {string} name */
 export const deleteSchema = (connection, name) => invoke('SCHEMA', 'DELETE', connection, { name });
@@ -270,9 +275,10 @@ export const listColumns = (connection, tableName) =>
  * @param {ConnectionConfig} connection
  * @param {string} tableName
  * @param {ColumnDef[]} columns
+ * @param {{ engine?: string; charset?: string; collate?: string; comment?: string }} [options]
  */
-export const createTable = (connection, tableName, columns) =>
-	invoke('TABLE', 'CREATE', connection, { tableName, columns });
+export const createTable = (connection, tableName, columns, options) =>
+	invoke('TABLE', 'CREATE', connection, { tableName, columns, ...(options ? { options } : {}) });
 
 /**
  * 添加列。

@@ -87,6 +87,8 @@ export const zhTW = {
 	'sidebar.ro_readonly': 'MySQL 系統庫，唯讀',
 	'sidebar.name_label': '名稱',
 	'sidebar.name_placeholder': '例如 my_db',
+	'schema.charset': '字元集',
+	'schema.collate': '排序規則',
 	'sidebar.resize_hint': '拖曳調整寬度（雙擊重設）',
 	'sidebar.resize_aria': '拖曳調整側欄寬度',
 	'sidebar.toast.schema_failed': '載入 schema 失敗',
@@ -195,6 +197,11 @@ export const zhTW = {
 	'table.toast.empty_col_type': '欄位 {name} 的類型不能為空',
 	'table.toast.create_failed': '建立表失敗',
 	'table.toast.created': '已建立 {schema}.{name}',
+	'table.options': '表選項',
+	'table.engine': '儲存引擎',
+	'table.charset': '字元集',
+	'table.collate': '排序規則',
+	'table.comment': '表註解',
 
 	// ---- 表結構面板 ----
 	'panel.edit_title': '修改表結構 · {table}',
