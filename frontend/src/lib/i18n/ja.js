@@ -189,6 +189,7 @@ export const ja = {
 	'table.col_size': 'サイズ',
 	'table.col_nullable': 'NULL 許可',
 	'table.col_default': 'デフォルト値',
+	'table.col_ai': 'AI',
 	'table.move_up': '上へ移動',
 	'table.move_down': '下へ移動',
 	'table.toast.fill_name': 'テーブル名を入力してください',

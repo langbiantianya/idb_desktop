@@ -76,7 +76,9 @@
 	$effect(() => {
 		if (open) {
 			tableName = '';
-			columns = [{ name: 'id', type: 'INT', nullable: false, isPrimaryKey: true }];
+			columns = [
+				{ name: 'id', type: 'INT', nullable: false, isPrimaryKey: true, autoIncrement: true }
+			];
 			optEngine = 'InnoDB';
 			optCharset = 'utf8mb4';
 			optCollate = 'utf8mb4_unicode_ci';
@@ -138,6 +140,7 @@
 			if (typeof c.size === 'number' && c.size > 0) out.size = c.size;
 			if (c.nullable !== undefined) out.nullable = c.nullable;
 			if (c.isPrimaryKey) out.isPrimaryKey = true;
+			if (c.isPrimaryKey && c.autoIncrement) out.autoIncrement = true;
 			if (c.defaultValue !== undefined && c.defaultValue !== '') out.defaultValue = c.defaultValue;
 			cleaned.push(out);
 		}
@@ -206,6 +209,7 @@
 								>{$t('table.col_nullable')}</th
 							>
 							<th class="px-2 py-1.5 font-medium" style="width: 3rem;">{$t('common.pk')}</th>
+							<th class="px-2 py-1.5 font-medium" style="width: 3rem;">{$t('table.col_ai')}</th>
 							<th class="px-2 py-1.5 font-medium">{$t('table.col_default')}</th>
 							<th class="px-2 py-1.5 font-medium" style="width: 6rem;"></th>
 						</tr>
@@ -261,8 +265,17 @@
 										onchange={(e) =>
 											patchColumn(i, {
 												isPrimaryKey: e.currentTarget.checked,
-												nullable: e.currentTarget.checked ? false : c.nullable
+												nullable: e.currentTarget.checked ? false : c.nullable,
+												autoIncrement: e.currentTarget.checked ? c.autoIncrement : false
 											})}
+									/>
+								</td>
+								<td class="px-2 py-1 text-center">
+									<input
+										type="checkbox"
+										disabled={c.isPrimaryKey !== true}
+										checked={c.isPrimaryKey === true && c.autoIncrement === true}
+										onchange={(e) => patchColumn(i, { autoIncrement: e.currentTarget.checked })}
 									/>
 								</td>
 								<td class="px-2 py-1">

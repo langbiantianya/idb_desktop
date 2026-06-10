@@ -116,8 +116,8 @@
 			const values = /** @type {Record<string, unknown>} */ ({});
 			for (const c of columns) {
 				const v = drafts[c];
-				if (v === '' || v === undefined) continue;
-				values[c] = v === null ? null : toDbValue(c, v);
+				if (v === '' || v === null || v === undefined) continue;
+				values[c] = toDbValue(c, v);
 			}
 			await onSubmit(values);
 		}

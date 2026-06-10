@@ -189,6 +189,7 @@ export const en = {
 	'table.col_size': 'Size',
 	'table.col_nullable': 'Nullable',
 	'table.col_default': 'Default',
+	'table.col_ai': 'AI',
 	'table.move_up': 'Move up',
 	'table.move_down': 'Move down',
 	'table.toast.fill_name': 'Please enter a table name',

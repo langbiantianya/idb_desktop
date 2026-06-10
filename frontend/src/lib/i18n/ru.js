@@ -189,6 +189,7 @@ export const ru = {
 	'table.col_size': 'Размер',
 	'table.col_nullable': 'Допускает NULL',
 	'table.col_default': 'Значение по умолчанию',
+	'table.col_ai': 'AI',
 	'table.move_up': 'Переместить вверх',
 	'table.move_down': 'Переместить вниз',
 	'table.toast.fill_name': 'Введите имя таблицы',

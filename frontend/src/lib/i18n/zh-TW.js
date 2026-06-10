@@ -189,6 +189,7 @@ export const zhTW = {
 	'table.col_size': '長度',
 	'table.col_nullable': '可空',
 	'table.col_default': '預設值',
+	'table.col_ai': '自增',
 	'table.move_up': '上移',
 	'table.move_down': '下移',
 	'table.toast.fill_name': '請填寫表名',

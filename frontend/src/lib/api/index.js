@@ -270,6 +270,7 @@ export const listColumns = (connection, tableName) =>
  * @property {number} [size]
  * @property {boolean} [nullable]
  * @property {boolean} [isPrimaryKey]
+ * @property {boolean} [autoIncrement]
  * @property {string} [defaultValue]
  * @property {string} [newName]  - 字段改名时传新名供引擎做 RENAME COLUMN
  */

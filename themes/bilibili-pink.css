@@ -1,0 +1,59 @@
+/* @idb-theme
+   name: BiliBili 粉
+   type: light
+*/
+
+:root {
+	color-scheme: light;
+
+	/* ---- bilibili pink palette ---- */
+	--md-primary: #fb7299;
+	--md-on-primary: #ffffff;
+	--md-primary-container: #ffd9e2;
+	--md-on-primary-container: #3e001d;
+
+	--md-secondary: #00a1d6;
+	--md-on-secondary: #ffffff;
+	--md-secondary-container: #c8e6ff;
+	--md-on-secondary-container: #001e2e;
+
+	--md-tertiary: #7c5800;
+	--md-on-tertiary: #ffffff;
+	--md-tertiary-container: #ffdea6;
+	--md-on-tertiary-container: #271900;
+
+	--md-error: #ba1a1a;
+	--md-on-error: #ffffff;
+	--md-error-container: #ffdad6;
+	--md-on-error-container: #410002;
+
+	--md-success: #006d3b;
+	--md-on-success: #ffffff;
+	--md-success-container: #95f7b8;
+	--md-on-success-container: #00210f;
+
+	/* ---- light surfaces ---- */
+	--md-background: #fff8f8;
+	--md-on-background: #22191c;
+	--md-surface: #fff8f8;
+	--md-on-surface: #22191c;
+	--md-surface-variant: #f3dde1;
+	--md-on-surface-variant: #524347;
+	--md-surface-dim: #e6d6da;
+	--md-surface-bright: #fff8f8;
+
+	--md-surface-container-lowest: #ffffff;
+	--md-surface-container-low: #fef0f2;
+	--md-surface-container: #f8eaed;
+	--md-surface-container-high: #f3e4e7;
+	--md-surface-container-highest: #eddee1;
+
+	--md-outline: #847377;
+	--md-outline-variant: #d6c2c6;
+	--md-scrim: #000000;
+	--md-shadow: #000000;
+
+	--md-elev-1: 0 1px 3px rgb(251 114 153 / 0.08), 0 1px 2px rgb(0 0 0 / 0.06);
+	--md-elev-2: 0 2px 6px rgb(251 114 153 / 0.10), 0 2px 4px rgb(0 0 0 / 0.08);
+	--md-elev-3: 0 4px 12px rgb(251 114 153 / 0.12), 0 2px 4px rgb(0 0 0 / 0.10);
+}
