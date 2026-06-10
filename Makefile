@@ -7,7 +7,7 @@
 #   make package-windows   构建 Windows amd64 安装包（NSIS .exe）
 #   make package-linux     构建 Linux amd64 分发包（.tar.gz）
 #   make package-all       构建所有平台安装包
-#   make jre-download      下载 Azul Zulu JRE 21 到 engine/jre/
+#   make jre-download      下载 Azul Zulu JRE 25 到 engine/jre/
 #   make clean             清理构建产物
 # =============================================================================
 
@@ -18,8 +18,8 @@ ENGINE_DIR  := engine
 JRE_DIR     := $(ENGINE_DIR)/jre
 JAR_FILE    := $(ENGINE_DIR)/bin/idb-engine.jar
 
-# Azul Zulu JRE 21 配置
-JAVA_VERSION := 21
+# Azul Zulu JRE 25 配置
+JAVA_VERSION := 25
 AZUL_API     := https://api.azul.com/metadata/v1/zulu/packages
 
 # 检测宿主机 OS（Makefile 自身运行在哪个平台）
@@ -109,7 +109,7 @@ frontend-build:
 	cd frontend && npm install && npm run build
 
 # =============================================================================
-# JRE 下载（Azul Zulu JRE 21）
+# JRE 下载（Azul Zulu JRE 25）
 # =============================================================================
 
 .PHONY: jre-download
