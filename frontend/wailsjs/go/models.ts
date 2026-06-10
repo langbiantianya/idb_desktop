@@ -28,6 +28,80 @@ export namespace main {
 	        this.systemMemoryMB = source["systemMemoryMB"];
 	    }
 	}
+	export class GoRuntimeInfo {
+	    goVersion: string;
+	    goroutines: number;
+	    alloc: number;
+	    sys: number;
+	    heapInuse: number;
+	    heapIdle: number;
+	    stackInuse: number;
+	    numGC: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GoRuntimeInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.goVersion = source["goVersion"];
+	        this.goroutines = source["goroutines"];
+	        this.alloc = source["alloc"];
+	        this.sys = source["sys"];
+	        this.heapInuse = source["heapInuse"];
+	        this.heapIdle = source["heapIdle"];
+	        this.stackInuse = source["stackInuse"];
+	        this.numGC = source["numGC"];
+	    }
+	}
+	export class WebViewInfo {
+	    processName: string;
+	    description: string;
+	    workingSetSize: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new WebViewInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.processName = source["processName"];
+	        this.description = source["description"];
+	        this.workingSetSize = source["workingSetSize"];
+	    }
+	}
+	export class RuntimeInfo {
+	    go: GoRuntimeInfo;
+	    webview: WebViewInfo;
+	
+	    static createFrom(source: any = {}) {
+	        return new RuntimeInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.go = this.convertValues(source["go"], GoRuntimeInfo);
+	        this.webview = this.convertValues(source["webview"], WebViewInfo);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class SaveConnectionInput {
 	    id: string;
 	    name: string;

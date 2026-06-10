@@ -18,6 +18,10 @@ export function GetConnectionPassword(arg1) {
   return window['go']['main']['App']['GetConnectionPassword'](arg1);
 }
 
+export function GetRuntimeInfo() {
+  return window['go']['main']['App']['GetRuntimeInfo']();
+}
+
 export function GetThemeCSS(arg1) {
   return window['go']['main']['App']['GetThemeCSS'](arg1);
 }

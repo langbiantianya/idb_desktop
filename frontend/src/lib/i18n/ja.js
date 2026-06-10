@@ -296,6 +296,10 @@ export const ja = {
 	'settings.nav.appearance': '外観',
 	'settings.nav.performance': 'パフォーマンス',
 	'settings.nav.system': 'システム情報',
+	'settings.nav.about': 'について',
+	'about.version': 'バージョン',
+	'about.github': 'GitHub リポジトリ',
+	'about.issues': '問題を報告',
 
 	// ---- テーマ切替 ----
 	'theme.light': 'ライト',
@@ -333,4 +337,14 @@ export const ja = {
 	'sysinfo.mem_free': '空き',
 	'sysinfo.uptime': '稼働時間',
 	'sysinfo.pid': 'プロセス ID',
+	'sysinfo.go': 'Go ランタイム',
+	'sysinfo.go_version': 'バージョン',
+	'sysinfo.goroutines': 'ゴルーチン数',
+	'sysinfo.go_heap_inuse': 'ヒープ使用中',
+	'sysinfo.go_heap_idle': 'ヒープ空き',
+	'sysinfo.go_stack': 'スタック',
+	'sysinfo.go_gc_count': 'GC 回数',
+	'sysinfo.webview': 'WebView',
+	'sysinfo.webview_name': 'エンジン',
+	'sysinfo.webview_desc': '説明',
 };

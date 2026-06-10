@@ -296,6 +296,10 @@ export const zhTW = {
 	'settings.nav.appearance': '外觀',
 	'settings.nav.performance': '效能',
 	'settings.nav.system': '系統資訊',
+	'settings.nav.about': '關於',
+	'about.version': '版本',
+	'about.github': 'GitHub 倉庫',
+	'about.issues': '回報問題',
 
 	// ---- 主題切換 ----
 	'theme.light': '淺色',
@@ -333,4 +337,14 @@ export const zhTW = {
 	'sysinfo.mem_free': '空閒',
 	'sysinfo.uptime': '運行時間',
 	'sysinfo.pid': '程序 ID',
+	'sysinfo.go': 'Go 執行時期',
+	'sysinfo.go_version': '版本',
+	'sysinfo.goroutines': '協程數',
+	'sysinfo.go_heap_inuse': '堆記憶體使用',
+	'sysinfo.go_heap_idle': '堆記憶體閒置',
+	'sysinfo.go_stack': '堆疊記憶體',
+	'sysinfo.go_gc_count': 'GC 次數',
+	'sysinfo.webview': 'WebView',
+	'sysinfo.webview_name': '引擎',
+	'sysinfo.webview_desc': '描述',
 };

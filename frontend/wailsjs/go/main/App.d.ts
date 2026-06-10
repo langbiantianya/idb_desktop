@@ -10,6 +10,8 @@ export function FetchDatabaseDataStreaming(arg1:string):Promise<string>;
 
 export function GetConnectionPassword(arg1:string):Promise<string>;
 
+export function GetRuntimeInfo():Promise<main.RuntimeInfo>;
+
 export function GetThemeCSS(arg1:string):Promise<string>;
 
 export function IsDevMode():Promise<boolean>;

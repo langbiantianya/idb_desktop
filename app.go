@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -164,7 +165,59 @@ func (a *App) LoadSettings() (AppSettings, error) {
 func (a *App) SaveSettings(input AppSettings) error {
 	return a.cfg.SaveSettings(input)
 }
-// 不引入 encoding/json 是为了避免在已有 envelope 字符串外再做一次完整序列化的开销。
+// ---------- Go / WebView 运行时信息 ----------
+
+// GoRuntimeInfo 描述 Go 进程运行时状态。
+type GoRuntimeInfo struct {
+	GoVersion  string `json:"goVersion"`
+	Goroutines int    `json:"goroutines"`
+	Alloc      uint64 `json:"alloc"`      // 当前堆分配（字节）
+	Sys        uint64 `json:"sys"`        // 从 OS 获取的总内存（字节）
+	HeapInuse  uint64 `json:"heapInuse"`  // 正在使用的堆内存（字节）
+	HeapIdle   uint64 `json:"heapIdle"`   // 空闲堆内存（字节）
+	StackInuse uint64 `json:"stackInuse"` // 栈内存（字节）
+	NumGC      uint32 `json:"numGC"`      // GC 次数
+}
+
+// WebViewInfo 描述 WebView 运行环境。
+type WebViewInfo struct {
+	ProcessName    string `json:"processName"`
+	Description    string `json:"description"`
+	WorkingSetSize uint64 `json:"workingSetSize"` // 所有 WebView2 进程 Working Set 总和（字节）
+}
+
+// RuntimeInfo 是 GetRuntimeInfo 的返回结构。
+type RuntimeInfo struct {
+	Go      GoRuntimeInfo `json:"go"`
+	WebView WebViewInfo   `json:"webview"`
+}
+
+// GetRuntimeInfo 返回 Go 进程自身的运行时信息和 WebView 环境信息。
+func (a *App) GetRuntimeInfo() RuntimeInfo {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	goInfo := GoRuntimeInfo{
+		GoVersion:  runtime.Version(),
+		Goroutines: runtime.NumGoroutine(),
+		Alloc:      m.Alloc,
+		Sys:        m.Sys,
+		HeapInuse:  m.HeapInuse,
+		HeapIdle:   m.HeapIdle,
+		StackInuse: m.StackInuse,
+		NumGC:      m.NumGC,
+	}
+
+	// Wails v2 on Windows uses WebView2 (msedgewebview2.exe)
+	webviewInfo := WebViewInfo{
+		ProcessName:    "WebView2",
+		Description:    "Wails v2 — Edge Chromium WebView2",
+		WorkingSetSize: getWebViewMemory(),
+	}
+
+	return RuntimeInfo{Go: goInfo, WebView: webviewInfo}
+}
+
 func escapeJSONString(s string) string {
 	out := make([]byte, 0, len(s)+8)
 	for i := 0; i < len(s); i++ {

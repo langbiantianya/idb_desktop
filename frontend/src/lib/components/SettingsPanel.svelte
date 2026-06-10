@@ -12,15 +12,17 @@
 	import SettingsAppearance from './settings/SettingsAppearance.svelte';
 	import SettingsPerformance from './settings/SettingsPerformance.svelte';
 	import SettingsSystem from './settings/SettingsSystem.svelte';
+	import SettingsAbout from './settings/SettingsAbout.svelte';
 
-	/** @type {'general' | 'appearance' | 'performance' | 'system'} */
+	/** @type {'general' | 'appearance' | 'performance' | 'system' | 'about'} */
 	let activeSection = $state('general');
 
 	const sections = [
 		{ id: 'general', i18nKey: 'settings.nav.general', icon: 'general' },
 		{ id: 'appearance', i18nKey: 'settings.nav.appearance', icon: 'appearance' },
 		{ id: 'performance', i18nKey: 'settings.nav.performance', icon: 'performance' },
-		{ id: 'system', i18nKey: 'settings.nav.system', icon: 'system' }
+		{ id: 'system', i18nKey: 'settings.nav.system', icon: 'system' },
+		{ id: 'about', i18nKey: 'settings.nav.about', icon: 'about' }
 	];
 </script>
 
@@ -102,6 +104,12 @@
 							<path d="M7 17h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
 							<path d="M10 14v3" stroke="currentColor" stroke-width="1.5" />
 						</svg>
+					{:else if sec.icon === 'about'}
+						<svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+							<circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5" />
+							<path d="M10 9v5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+							<circle cx="10" cy="6.5" r="0.75" fill="currentColor" />
+						</svg>
 					{/if}
 					{$t(sec.i18nKey)}
 				</button>
@@ -119,6 +127,8 @@
 					<SettingsPerformance />
 				{:else if activeSection === 'system'}
 					<SettingsSystem />
+				{:else if activeSection === 'about'}
+					<SettingsAbout />
 				{/if}
 			</div>
 		</main>

@@ -296,6 +296,10 @@ export const ru = {
 	'settings.nav.appearance': 'Оформление',
 	'settings.nav.performance': 'Производительность',
 	'settings.nav.system': 'Система',
+	'settings.nav.about': 'О программе',
+	'about.version': 'Версия',
+	'about.github': 'Репозиторий GitHub',
+	'about.issues': 'Сообщить о проблеме',
 
 	// ---- Переключатель темы ----
 	'theme.light': 'Светлая',
@@ -333,4 +337,14 @@ export const ru = {
 	'sysinfo.mem_free': 'Свободно',
 	'sysinfo.uptime': 'Время работы',
 	'sysinfo.pid': 'ID процесса',
+	'sysinfo.go': 'Go Runtime',
+	'sysinfo.go_version': 'Версия',
+	'sysinfo.goroutines': 'Горутины',
+	'sysinfo.go_heap_inuse': 'Куча (используется)',
+	'sysinfo.go_heap_idle': 'Куча (свободно)',
+	'sysinfo.go_stack': 'Стек',
+	'sysinfo.go_gc_count': 'Кол-во GC',
+	'sysinfo.webview': 'WebView',
+	'sysinfo.webview_name': 'Движок',
+	'sysinfo.webview_desc': 'Описание',
 };

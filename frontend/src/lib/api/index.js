@@ -1,7 +1,11 @@
 // 与 Go 主进程 FetchDatabaseData 对接的统一 API 层。
 // 协议契约见 CLAUDE.md §5：单行 JSON envelope，行尾 \n 由 Go 侧负责。
 
-import { FetchDatabaseData, FetchDatabaseDataStreaming } from '../../../wailsjs/go/main/App.js';
+import {
+	FetchDatabaseData,
+	FetchDatabaseDataStreaming,
+	GetRuntimeInfo
+} from '../../../wailsjs/go/main/App.js';
 import { EventsOn, EventsOnce, EventsOff } from '../../../wailsjs/runtime/runtime.js';
 import { validateWhere, validateOrderBy } from '../sqlValidate.js';
 
@@ -396,6 +400,14 @@ export function getSystemInfo() {
 		database: ''
 	});
 	return invoke('SYSTEM', 'INFO', dummyConn);
+}
+
+/**
+ * 获取 Go 进程 + WebView 运行时信息（直接调用 Go 方法，不走引擎）。
+ * @returns {Promise<import('../../../wailsjs/go/main/App').RuntimeInfo>}
+ */
+export function getRuntimeInfo() {
+	return GetRuntimeInfo();
 }
 
 // -------- Streaming --------

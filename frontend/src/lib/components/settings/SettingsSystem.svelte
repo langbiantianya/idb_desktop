@@ -1,11 +1,15 @@
 <script>
-	import { getSystemInfo } from '$lib/api';
+	import { getSystemInfo, getRuntimeInfo } from '$lib/api';
 	import { t } from '$lib/i18n';
 
 	/** @type {Record<string, unknown> | null} */
 	let sysInfo = $state(null);
 	let sysLoading = $state(true);
 	let sysError = $state(false);
+
+	/** @type {import('$lib/api').RuntimeInfo | null} */
+	let rtInfo = $state(null);
+	let rtLoading = $state(true);
 
 	$effect(() => {
 		async function fetchSys() {
@@ -23,8 +27,21 @@
 				sysLoading = false;
 			}
 		}
+		async function fetchRt() {
+			try {
+				rtInfo = await getRuntimeInfo();
+			} catch {
+				// 获取失败不阻塞 UI
+			} finally {
+				rtLoading = false;
+			}
+		}
 		fetchSys();
-		const timer = setInterval(fetchSys, 1000);
+		fetchRt();
+		const timer = setInterval(() => {
+			fetchSys();
+			fetchRt();
+		}, 1000);
 		return () => clearInterval(timer);
 	});
 
@@ -45,6 +62,13 @@
 		const h = Math.floor(m / 60);
 		return h + 'h ' + (m % 60) + 'min';
 	}
+
+	/** @param {number} bytes */
+	function memPct(bytes) {
+		if (!sysInfo) return 0;
+		const mem = /** @type {Record<string, number>} */ (sysInfo.memory);
+		return Math.round((bytes / mem.max) * 100);
+	}
 </script>
 
 <section class="space-y-3">
@@ -60,30 +84,7 @@
 	{:else if sysInfo}
 		{@const mem = /** @type {Record<string, number>} */ (sysInfo.memory)}
 		<div class="grid grid-cols-2 gap-3 text-xs">
-			<div
-				class="col-span-2 rounded-lg p-3"
-				style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);"
-			>
-				<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">
-					{$t('sysinfo.jvm')}
-				</h3>
-				<div class="space-y-1" style="color: var(--md-on-surface-variant);">
-					<p>
-						{$t('sysinfo.jvm_version')}:
-						<span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.jvmVersion}</span>
-					</p>
-					<p>
-						{$t('sysinfo.jvm_vendor')}:
-						<span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.jvmVendor}</span>
-					</p>
-					<p>
-						{$t('sysinfo.jvm_name')}:
-						<span class="font-mono text-[11px]" style="color: var(--md-on-surface);"
-							>{sysInfo.jvmName}</span
-						>
-					</p>
-				</div>
-			</div>
+			<!-- OS -->
 			<div
 				class="rounded-lg p-3"
 				style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);"
@@ -106,6 +107,8 @@
 					</p>
 				</div>
 			</div>
+
+			<!-- CPU -->
 			<div
 				class="rounded-lg p-3"
 				style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);"
@@ -129,14 +132,134 @@
 					</p>
 				</div>
 			</div>
+
+			<!-- Go Runtime -->
 			<div
 				class="col-span-2 rounded-lg p-3"
 				style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);"
 			>
 				<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">
-					{$t('sysinfo.memory')}
+					{$t('sysinfo.go')}
 				</h3>
-				<div class="grid grid-cols-2 gap-2" style="color: var(--md-on-surface-variant);">
+				{#if rtLoading}
+					<p class="animate-pulse text-xs" style="color: var(--md-on-surface-variant);">
+						{$t('sysinfo.loading')}
+					</p>
+				{:else if rtInfo}
+					<div class="grid grid-cols-3 gap-2" style="color: var(--md-on-surface-variant);">
+						<p>
+							{$t('sysinfo.go_version')}:
+							<span class="font-mono" style="color: var(--md-on-surface);"
+								>{rtInfo.go.goVersion}</span
+							>
+						</p>
+						<p>
+							{$t('sysinfo.goroutines')}:
+							<span class="font-mono" style="color: var(--md-on-surface);"
+								>{rtInfo.go.goroutines}</span
+							>
+						</p>
+						<p>
+							{$t('sysinfo.go_gc_count')}:
+							<span class="font-mono" style="color: var(--md-on-surface);">{rtInfo.go.numGC}</span>
+						</p>
+						<p>
+							{$t('sysinfo.go_heap_inuse')}:
+							<span class="font-mono" style="color: var(--md-on-surface);"
+								>{formatBytes(rtInfo.go.heapInuse)}</span
+							>
+						</p>
+						<p>
+							{$t('sysinfo.go_heap_idle')}:
+							<span class="font-mono" style="color: var(--md-on-surface);"
+								>{formatBytes(rtInfo.go.heapIdle)}</span
+							>
+						</p>
+						<p>
+							{$t('sysinfo.go_stack')}:
+							<span class="font-mono" style="color: var(--md-on-surface);"
+								>{formatBytes(rtInfo.go.stackInuse)}</span
+							>
+						</p>
+					</div>
+					<div class="mt-2 space-y-1">
+						<div
+							class="h-1.5 w-full overflow-hidden rounded-full"
+							style="background: var(--md-surface-container-highest);"
+						>
+							<div
+								class="h-full rounded-full transition-all duration-500"
+								style="width: {memPct(rtInfo.go.heapInuse)}%; background: var(--md-tertiary);"
+							></div>
+						</div>
+						<p class="text-[11px]" style="color: var(--md-on-surface-variant);">
+							{$t('sysinfo.go_heap_inuse')}: {formatBytes(rtInfo.go.heapInuse)} · {memPct(
+								rtInfo.go.heapInuse
+							)}%
+						</p>
+					</div>
+				{:else}
+					<p class="text-xs" style="color: var(--md-error);">{$t('sysinfo.error')}</p>
+				{/if}
+			</div>
+
+			<!-- WebView -->
+			<div
+				class="col-span-2 rounded-lg p-3"
+				style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);"
+			>
+				<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">
+					{$t('sysinfo.webview')}
+				</h3>
+				{#if rtLoading}
+					<p class="animate-pulse text-xs" style="color: var(--md-on-surface-variant);">
+						{$t('sysinfo.loading')}
+					</p>
+				{:else if rtInfo}
+					<div class="grid grid-cols-3 gap-2" style="color: var(--md-on-surface-variant);">
+						<p>
+							{$t('sysinfo.webview_name')}:
+							<span style="color: var(--md-on-surface);">{rtInfo.webview.processName}</span>
+						</p>
+						<p>
+							{$t('sysinfo.memory')}:
+							<span class="font-mono" style="color: var(--md-on-surface);"
+								>{formatBytes(rtInfo.webview.workingSetSize)}</span
+							>
+						</p>
+						<p>
+							{$t('sysinfo.webview_desc')}:
+							<span style="color: var(--md-on-surface);">{rtInfo.webview.description}</span>
+						</p>
+					</div>
+				{:else}
+					<p class="text-xs" style="color: var(--md-error);">{$t('sysinfo.error')}</p>
+				{/if}
+			</div>
+
+			<!-- JVM -->
+			<div
+				class="col-span-2 rounded-lg p-3"
+				style="background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant);"
+			>
+				<h3 class="mb-2 font-medium" style="color: var(--md-on-surface);">
+					{$t('sysinfo.jvm')}
+				</h3>
+				<div class="grid grid-cols-3 gap-2" style="color: var(--md-on-surface-variant);">
+					<p>
+						{$t('sysinfo.jvm_version')}:
+						<span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.jvmVersion}</span>
+					</p>
+					<p>
+						{$t('sysinfo.jvm_vendor')}:
+						<span class="font-mono" style="color: var(--md-on-surface);">{sysInfo.jvmVendor}</span>
+					</p>
+					<p>
+						{$t('sysinfo.jvm_name')}:
+						<span class="font-mono text-[11px]" style="color: var(--md-on-surface);"
+							>{sysInfo.jvmName}</span
+						>
+					</p>
 					<p>
 						{$t('sysinfo.mem_max')}:
 						<span class="font-mono" style="color: var(--md-on-surface);"
@@ -150,34 +273,30 @@
 						>
 					</p>
 					<p>
-						{$t('sysinfo.mem_used')}:
-						<span class="font-mono" style="color: var(--md-on-surface);"
-							>{formatBytes(mem.used)}</span
-						>
-					</p>
-					<p>
 						{$t('sysinfo.mem_free')}:
 						<span class="font-mono" style="color: var(--md-on-surface);"
 							>{formatBytes(mem.free)}</span
 						>
 					</p>
 				</div>
-				<div
-					class="mt-2 h-2 w-full overflow-hidden rounded-full"
-					style="background: var(--md-surface-container-highest);"
-				>
+				<div class="mt-2 space-y-1">
 					<div
-						class="h-full rounded-full transition-all duration-500"
-						style="width: {Math.round(
+						class="h-1.5 w-full overflow-hidden rounded-full"
+						style="background: var(--md-surface-container-highest);"
+					>
+						<div
+							class="h-full rounded-full transition-all duration-500"
+							style="width: {Math.round(
+								(mem.used / mem.total) * 100
+							)}%; background: var(--md-primary);"
+						></div>
+					</div>
+					<p class="text-[11px]" style="color: var(--md-on-surface-variant);">
+						{$t('sysinfo.mem_used')}: {formatBytes(mem.used)} · {Math.round(
 							(mem.used / mem.total) * 100
-						)}%; background: var(--md-primary);"
-					></div>
+						)}%
+					</p>
 				</div>
-				<p class="mt-1 text-[11px]" style="color: var(--md-on-surface-variant);">
-					{Math.round((mem.used / mem.total) * 100)}% · {formatBytes(mem.used)} / {formatBytes(
-						mem.total
-					)}
-				</p>
 			</div>
 		</div>
 	{/if}

@@ -296,6 +296,10 @@ export const zhCN = {
 	'settings.nav.appearance': '外观',
 	'settings.nav.performance': '性能',
 	'settings.nav.system': '系统信息',
+	'settings.nav.about': '关于',
+	'about.version': '版本',
+	'about.github': 'GitHub 仓库',
+	'about.issues': '反馈问题',
 
 	// ---- 主题切换 ----
 	'theme.light': '浅色',
@@ -333,4 +337,14 @@ export const zhCN = {
 	'sysinfo.mem_free': '空闲',
 	'sysinfo.uptime': '运行时间',
 	'sysinfo.pid': '进程 ID',
+	'sysinfo.go': 'Go 运行时',
+	'sysinfo.go_version': '版本',
+	'sysinfo.goroutines': '协程数',
+	'sysinfo.go_heap_inuse': '堆内存使用',
+	'sysinfo.go_heap_idle': '堆内存空闲',
+	'sysinfo.go_stack': '栈内存',
+	'sysinfo.go_gc_count': 'GC 次数',
+	'sysinfo.webview': 'WebView',
+	'sysinfo.webview_name': '引擎',
+	'sysinfo.webview_desc': '描述',
 };

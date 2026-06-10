@@ -296,6 +296,10 @@ export const en = {
 	'settings.nav.appearance': 'Appearance',
 	'settings.nav.performance': 'Performance',
 	'settings.nav.system': 'System',
+	'settings.nav.about': 'About',
+	'about.version': 'Version',
+	'about.github': 'GitHub Repository',
+	'about.issues': 'Report Issues',
 
 	// ---- Theme Toggle ----
 	'theme.light': 'Light',
@@ -333,4 +337,14 @@ export const en = {
 	'sysinfo.mem_free': 'Free',
 	'sysinfo.uptime': 'Uptime',
 	'sysinfo.pid': 'Process ID',
+	'sysinfo.go': 'Go Runtime',
+	'sysinfo.go_version': 'Version',
+	'sysinfo.goroutines': 'Goroutines',
+	'sysinfo.go_heap_inuse': 'Heap In-Use',
+	'sysinfo.go_heap_idle': 'Heap Idle',
+	'sysinfo.go_stack': 'Stack',
+	'sysinfo.go_gc_count': 'GC Count',
+	'sysinfo.webview': 'WebView',
+	'sysinfo.webview_name': 'Engine',
+	'sysinfo.webview_desc': 'Description',
 };
