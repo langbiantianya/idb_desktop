@@ -1,3 +1,5 @@
+//go:build windows
+
 package main
 
 import (
@@ -5,14 +7,20 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // getWebViewMemory 递归收集当前进程的所有 WebView2 后代进程，返回 Working Set 总和（字节）。
 func getWebViewMemory() uint64 {
 	pid := os.Getpid()
-	out, err := exec.Command("powershell", "-NoProfile", "-Command",
+	cmd := exec.Command("powershell", "-NoProfile", "-Command",
 		"Get-WmiObject Win32_Process | ForEach-Object { \"$($_.ProcessId)|$($_.ParentProcessId)|$($_.Name)|$($_.WorkingSetSize)\" }",
-	).Output()
+	)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
+	}
+	out, err := cmd.Output()
 	if err != nil {
 		return 0
 	}

@@ -112,6 +112,16 @@ ShowInstDetails show # This will always show the installation details.
 
 Function .onInit
    !insertmacro wails.checkArchitecture
+
+   ; Uninstall previous version if present
+   ${If} ${FileExists} "$INSTDIR\uninstall.exe"
+       MessageBox MB_OKCANCEL|MB_ICONQUESTION "A previous version of ${INFO_PRODUCTNAME} is installed. It will be removed first." IDOK uninst_prev
+       Abort
+       uninst_prev:
+           InitPluginsDir
+           CopyFiles /SILENT "$INSTDIR\uninstall.exe" "$PLUGINSDIR\uninstall-old.exe"
+           ExecWait '"$PLUGINSDIR\uninstall-old.exe" _?=$INSTDIR'
+   ${EndIf}
 FunctionEnd
 
 Section
