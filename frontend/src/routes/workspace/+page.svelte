@@ -6,6 +6,7 @@
 	import DataGrid from '$lib/components/DataGrid.svelte';
 	import SqlConsole from '$lib/components/SqlConsole.svelte';
 	import UserPanel from '$lib/components/UserPanel.svelte';
+	import DataGeneratorPanel from '$lib/components/DataGeneratorPanel.svelte';
 	import TablePanel from '$lib/components/TablePanel.svelte';
 	import TableEditor from '$lib/components/TableEditor.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
@@ -20,6 +21,7 @@
 	 * @typedef {{ id: string; kind: 'data'; schema: string; table: string; title: string }
 	 *   | { id: string; kind: 'sql'; schema: string; title: string }
 	 *   | { id: string; kind: 'users'; title: string }
+	 *   | { id: string; kind: 'generator'; schema: string; title: string }
 	 * } Tab
 	 */
 
@@ -130,6 +132,15 @@
 		activeTabId = id;
 	}
 
+	function openGeneratorTab() {
+		if (!selectedSchema) return;
+		const id = `generator:${selectedSchema}`;
+		if (!tabs.find((t) => t.id === id)) {
+			tabs = [...tabs, { id, kind: 'generator', schema: selectedSchema, title: get(t)('dg.tab_title', { schema: selectedSchema }) }];
+		}
+		activeTabId = id;
+	}
+
 	function closeTab(id, evt) {
 		evt?.stopPropagation();
 		const idx = tabs.findIndex((t) => t.id === id);
@@ -230,6 +241,9 @@
 			{$t('workspace.sql_console')}
 		</MdButton>
 		<MdButton variant="text" onclick={openUsersTab}>{$t('workspace.users')}</MdButton>
+		<MdButton variant="text" onclick={() => openGeneratorTab()} disabled={!selectedSchema}>
+			{$t('workspace.data_generator')}
+		</MdButton>
 		<div class="flex items-center gap-1">
 			<ThemeToggle />
 			<MdButton variant="icon" onclick={openSettings} title={$t('workspace.settings')}>
@@ -254,6 +268,10 @@
 			{onCreateTable}
 			{onInspectTable}
 			{onTableDeleted}
+			onOpenGenerator={(schema) => {
+				selectedSchema = schema;
+				openGeneratorTab();
+			}}
 		/>
 
 		<!-- Workspace -->
@@ -295,6 +313,8 @@
 								<span style="color: var(--md-tertiary-container); filter: brightness(0.7);">▦</span>
 							{:else if tab.kind === 'sql'}
 								<span style="color: var(--md-primary);">⌘</span>
+							{:else if tab.kind === 'generator'}
+								<span style="color: var(--md-tertiary);">⚡</span>
 							{:else}
 								<span style="color: var(--md-secondary);">◐</span>
 							{/if}
@@ -342,6 +362,11 @@
 							{/if}
 						{:else if tab.kind === 'users'}
 							<UserPanel {baseConn} />
+						{:else if tab.kind === 'generator'}
+							{@const sc = schemaConnFor(tab.schema)}
+							{#if sc}
+								<DataGeneratorPanel schemaConn={sc} />
+							{/if}
 						{/if}
 					</div>
 				{/each}

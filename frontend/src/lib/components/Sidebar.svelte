@@ -32,6 +32,7 @@
 	 * @property {(schema: string) => void} [onCreateTable]
 	 * @property {(schema: string, table: string) => void} [onInspectTable]
 	 * @property {(schema: string, table: string) => void} [onTableDeleted]
+	 * @property {(schema: string) => void} [onOpenGenerator]
 	 */
 
 	/** @type {Props} */
@@ -43,7 +44,8 @@
 		onSelectTable,
 		onCreateTable,
 		onInspectTable,
-		onTableDeleted
+		onTableDeleted,
+		onOpenGenerator
 	} = $props();
 
 	let schemas = $state(/** @type {string[]} */ ([]));
@@ -361,6 +363,11 @@
 		onSelectTable(schema, table);
 	}
 
+	function menuOpenGenerator(schema) {
+		closeMenu();
+		onOpenGenerator?.(schema);
+	}
+
 	function menuCreateTable(schema) {
 		closeMenu();
 		onCreateTable?.(schema);
@@ -495,6 +502,11 @@
 					label: $t('sidebar.modify_table'),
 					icon: '⊞',
 					onClick: () => menuInspectTable(menu.schema, menu.table)
+				},
+				{
+					label: $t('sidebar.data_generator'),
+					icon: '⚡',
+					onClick: () => menuOpenGenerator(menu.schema)
 				},
 				{
 					label: $t('sidebar.refresh_tables'),

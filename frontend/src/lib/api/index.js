@@ -11,7 +11,7 @@ import { validateWhere, validateOrderBy } from '../sqlValidate.js';
 
 /** @typedef {'Mysql' | 'Postgres'} Driver */
 /** @typedef {'SCHEMA' | 'USER' | 'TABLE' | 'DATA' | 'SQL'} Category */
-/** @typedef {'LIST' | 'CREATE' | 'UPDATE' | 'DELETE' | 'EXECUTE' | 'GET_DDL'} Action */
+/** @typedef {'LIST' | 'CREATE' | 'UPDATE' | 'DELETE' | 'EXECUTE' | 'GET_DDL' | 'GENERATE'} Action */
 
 /**
  * @typedef {Object} ConnectionConfig
@@ -446,3 +446,17 @@ export function listDataStreaming(connection, tableName, onRow, opts = {}) {
  */
 export const executeSqlStreaming = (connection, sql, onRow) =>
 	invokeStreaming('SQL', 'EXECUTE', connection, { sql }, onRow);
+
+/**
+ * 流式造数。每张表完成后通过 onProgress 推送进度（stream:true），最终 end:true。
+ * @param {ConnectionConfig} connection
+ * @param {{ count: number; script: string }[]} tables
+ * @param {(data: { table: string; inserted: number; total: number; index: number; sql: string }) => void} onProgress
+ * @param {{ luaVersion?: string }} [options]
+ * @returns {Promise<Response>}
+ */
+export const generateData = (connection, tables, onProgress, options = {}) => {
+	const payload = { tables };
+	if (options.luaVersion) payload.luaVersion = options.luaVersion;
+	return invokeStreaming('DATA', 'GENERATE', connection, payload, onProgress);
+};
