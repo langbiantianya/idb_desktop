@@ -1,9 +1,12 @@
 <script>
-	import { generateData } from '$lib/api';
+	import { listTables, listColumns, generateData } from '$lib/api';
+	import { asTableList, asColumnList } from '$lib/api/normalize.js';
 	import { ok, err } from '$lib/stores/toasts.js';
 	import { t } from '$lib/i18n';
 	import { get } from 'svelte/store';
 	import LuaEditor from './LuaEditor.svelte';
+	import DataGenHelp from './DataGenHelp.svelte';
+	import { formatLua } from '$lib/luaFormat.js';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
@@ -19,9 +22,38 @@
 	let count = $state(100);
 	let script = $state('');
 
+	// ---- 数据库元数据（补全用）----
+	/** @type {string[]} */
+	let tableSuggestions = $state([]);
+	/** @type {{ table: string; column: string; type: string }[]} */
+	let columnSuggestions = $state([]);
+
+	// 加载表名，然后逐表加载列
+	$effect(() => {
+		const conn = schemaConn;
+		if (!conn) return;
+		listTables(conn).then((resp) => {
+			if (!resp.success) return;
+			const tables = asTableList(resp.data);
+			tableSuggestions = tables.map((t) => t.name);
+			// 逐表加载列
+			for (const tbl of tables) {
+				listColumns(conn, tbl.name).then((colResp) => {
+					if (!colResp.success) return;
+					const cols = asColumnList(colResp.data);
+					columnSuggestions = [
+						...columnSuggestions,
+						...cols.map((c) => ({ table: tbl.name, column: c.name, type: c.type }))
+					];
+				});
+			}
+		});
+	});
+
 	// ---- 运行状态 ----
 	let running = $state(false);
 	let luaVersion = $state('luajit');
+	let showHelp = $state(false);
 
 	// ---- SQL 日志（最多 MAX_LOG 行）----
 	const MAX_LOG = 500;
@@ -50,6 +82,17 @@
 		requestAnimationFrame(() => {
 			if (logEl) logEl.scrollTop = logEl.scrollHeight;
 		});
+	}
+
+	let formatting = $state(false);
+	async function format() {
+		if (formatting || !script.trim()) return;
+		formatting = true;
+		try {
+			script = await formatLua(script);
+		} finally {
+			formatting = false;
+		}
 	}
 
 	async function run() {
@@ -103,6 +146,12 @@
 		style="background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant);"
 	>
 		<h2 class="shrink-0 text-sm font-medium" style="color: var(--md-on-surface);">{$t('dg.title')}</h2>
+		<button
+			type="button"
+			class="dg-help-btn"
+			onclick={() => (showHelp = true)}
+			title={$t('dg.help')}
+		>?</button>
 		<div class="flex min-w-0 flex-wrap items-center gap-3">
 			<div class="shrink-0 font-mono text-xs" style="color: var(--md-on-surface-variant);">
 				{schemaConn.driver}://{schemaConn.host}:{schemaConn.port}/{schemaConn.database || '—'}
@@ -136,6 +185,15 @@
 			</div>
 			<button
 				type="button"
+				class="dg-format-btn"
+				onclick={format}
+				disabled={formatting || running || !script.trim()}
+				title="Alt+Shift+F"
+			>
+				{$t('dg.format')}
+			</button>
+			<button
+				type="button"
 				class="dg-run-btn"
 				onclick={run}
 				disabled={running}
@@ -163,7 +221,10 @@
 			value={script}
 			onValueChange={(v) => (script = v)}
 			onCtrlEnter={run}
+			onFormat={format}
 			placeholder={$t('dg.script_placeholder')}
+			{tableSuggestions}
+			{columnSuggestions}
 		/>
 	</div>
 
@@ -209,6 +270,8 @@
 	</div>
 </section>
 
+<DataGenHelp open={showHelp} onClose={() => (showHelp = false)} />
+
 <style>
 	.dg-count-input {
 		width: 5rem;
@@ -237,6 +300,25 @@
 	}
 	.dg-version-select:focus {
 		border-color: var(--md-primary);
+	}
+	.dg-format-btn {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.125rem 0.5rem;
+		font-size: 0.75rem;
+		border: 1px solid var(--md-outline-variant);
+		border-radius: var(--md-radius-xs);
+		background: transparent;
+		color: var(--md-on-surface-variant);
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+	.dg-format-btn:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--md-primary) 8%, transparent);
+	}
+	.dg-format-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 	.dg-run-btn {
 		display: inline-flex;
@@ -278,6 +360,26 @@
 		font-size: 0.6875rem;
 		line-height: 1.25rem;
 		border-radius: 9999px;
+		background: color-mix(in srgb, var(--md-primary) 12%, transparent);
+		color: var(--md-primary);
+	}
+	.dg-help-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.375rem;
+		height: 1.375rem;
+		font-size: 0.75rem;
+		font-weight: 600;
+		border: 1px solid var(--md-outline-variant);
+		border-radius: 50%;
+		background: transparent;
+		color: var(--md-on-surface-variant);
+		cursor: pointer;
+		flex-shrink: 0;
+		transition: background 0.15s, color 0.15s;
+	}
+	.dg-help-btn:hover {
 		background: color-mix(in srgb, var(--md-primary) 12%, transparent);
 		color: var(--md-primary);
 	}

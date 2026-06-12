@@ -8,8 +8,10 @@
 	 * @property {string} value
 	 * @property {(v: string) => void} onValueChange
 	 * @property {() => void} [onCtrlEnter]
+	 * @property {() => void} [onFormat]
 	 * @property {string} [placeholder]
-	 * @property {string[]} [extraSuggestions] - 额外补全项（如列名）
+	 * @property {string[]} [tableSuggestions] - 数据库表名
+	 * @property {{ table: string; column: string; type: string }[]} [columnSuggestions] - 数据库列名
 	 * @property {string} [height] - 编辑器高度，默认 10rem
 	 */
 
@@ -18,8 +20,10 @@
 		value,
 		onValueChange,
 		onCtrlEnter,
+		onFormat,
 		placeholder = '',
-		extraSuggestions = [],
+		tableSuggestions = [],
+		columnSuggestions = [],
 		height = '10rem'
 	} = $props();
 
@@ -49,6 +53,38 @@
 		{ label: 'random_name', detail: 'random_name()', insertText: 'random_name()', doc: 'Random person name' },
 		{ label: 'random_enum', detail: 'random_enum(...)', insertText: "random_enum('${1:val1}', '${2:val2}')", doc: 'Pick a random value from the given list' },
 		{ label: 'random_uuid', detail: 'random_uuid()', insertText: 'random_uuid()', doc: 'Random UUID v4' }
+	];
+
+	// Lua 关键字
+	const LUA_KEYWORDS = [
+		'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function',
+		'goto', 'if', 'in', 'local', 'nil', 'not', 'or', 'repeat', 'return',
+		'then', 'true', 'until', 'while'
+	];
+
+	// Lua 标准库函数
+	const LUA_BUILTINS = [
+		{ label: 'print', detail: 'print(...)', doc: 'Print values to stdout' },
+		{ label: 'type', detail: 'type(v)', doc: 'Return the type of v as a string' },
+		{ label: 'tostring', detail: 'tostring(v)', doc: 'Convert v to a string' },
+		{ label: 'tonumber', detail: 'tonumber(v)', doc: 'Convert v to a number' },
+		{ label: 'pairs', detail: 'pairs(t)', doc: 'Iterate over key-value pairs of a table' },
+		{ label: 'ipairs', detail: 'ipairs(t)', doc: 'Iterate over integer-keyed array part' },
+		{ label: 'select', detail: 'select(index, ...)', doc: 'Select elements from varargs' },
+		{ label: 'require', detail: "require('module')", doc: 'Load a module (disabled in sandbox)' },
+		{ label: 'string.len', detail: 'string.len(s)', doc: 'Length of string' },
+		{ label: 'string.sub', detail: 'string.sub(s, i, j)', doc: 'Substring from i to j' },
+		{ label: 'string.format', detail: 'string.format(fmt, ...)', doc: 'Format a string' },
+		{ label: 'string.rep', detail: 'string.rep(s, n)', doc: 'Repeat string n times' },
+		{ label: 'string.upper', detail: 'string.upper(s)', doc: 'Uppercase' },
+		{ label: 'string.lower', detail: 'string.lower(s)', doc: 'Lowercase' },
+		{ label: 'math.random', detail: 'math.random(m, n)', doc: 'Random integer in [m, n]' },
+		{ label: 'math.floor', detail: 'math.floor(x)', doc: 'Floor' },
+		{ label: 'math.ceil', detail: 'math.ceil(x)', doc: 'Ceiling' },
+		{ label: 'math.abs', detail: 'math.abs(x)', doc: 'Absolute value' },
+		{ label: 'table.insert', detail: 'table.insert(t, v)', doc: 'Insert value into array' },
+		{ label: 'table.remove', detail: 'table.remove(t, i)', doc: 'Remove element at index' },
+		{ label: 'table.concat', detail: 'table.concat(t, sep)', doc: 'Concatenate array elements' }
 	];
 
 	/** @param {typeof import('monaco-editor')} monaco */
@@ -141,8 +177,12 @@
 				onCtrlEnter?.();
 			});
 
+			editor.addCommand(monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
+				onFormat?.();
+			});
+
 			completionDisposer = monaco.languages.registerCompletionItemProvider('lua', {
-				triggerCharacters: ['.', '('],
+				triggerCharacters: ['.', '(', '"', "'"],
 				provideCompletionItems(model, position) {
 					const wordInfo = model.getWordUntilPosition(position);
 					const word = wordInfo.word;
@@ -156,6 +196,52 @@
 					const K = monaco.languages.CompletionItemKind;
 					const suggestions = [];
 
+					// Lua 关键字
+					for (const kw of LUA_KEYWORDS) {
+						suggestions.push({
+							label: kw,
+							kind: K.Keyword,
+							insertText: kw,
+							range
+						});
+					}
+
+					// Lua 标准库
+					for (const fn of LUA_BUILTINS) {
+						suggestions.push({
+							label: fn.label,
+							kind: K.Function,
+							detail: fn.detail,
+							documentation: fn.doc,
+							insertText: fn.label,
+							range
+						});
+					}
+
+					// 数据库表名（优先显示）
+					for (const tbl of tableSuggestions) {
+						suggestions.push({
+							label: tbl,
+							kind: K.Struct,
+							detail: 'table',
+							insertText: tbl,
+							sortText: '0' + tbl,
+							range
+						});
+					}
+
+					// 数据库列名（优先显示）
+					for (const col of columnSuggestions) {
+						suggestions.push({
+							label: col.column,
+							kind: K.Field,
+							detail: `${col.table}.${col.column} ${col.type}`,
+							insertText: col.column,
+							sortText: '1' + col.column,
+							range
+						});
+					}
+
 					// 内置造数函数
 					for (const b of BUILTINS) {
 						suggestions.push({
@@ -165,16 +251,7 @@
 							documentation: b.doc,
 							insertText: b.insertText,
 							insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-							range
-						});
-					}
-
-					// 额外列名补全
-					for (const col of extraSuggestions) {
-						suggestions.push({
-							label: col,
-							kind: K.Field,
-							insertText: col,
+							sortText: '2' + b.label,
 							range
 						});
 					}
