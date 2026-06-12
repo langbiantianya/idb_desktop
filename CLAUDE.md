@@ -52,25 +52,28 @@ idb_desktop/
 │   │   ├── app.html
 │   │   ├── lib/
 │   │   │   ├── api/             # 引擎通信 API 层（含流式调用）
-│   │   │   │   ├── index.js     # 统一请求封装（invoke + invokeStreaming）
+│   │   │   │   ├── index.js     # 统一请求封装（invoke + invokeStreaming + generateData）
 │   │   │   │   ├── connections.js # 连接管理 API（List/Get/Save/Delete）
 │   │   │   │   ├── themes.js    # 主题与应用设置 API（ListThemes/GetThemeCSS/LoadSettings/SaveSettings）
 │   │   │   │   └── normalize.js   # 响应数据归一化工具
-│   │   │   ├── i18n/            # 多语言支持（5 种语言）
+│   │   │   ├── i18n/            # 多语言支持（5 种语言，300+ 翻译 key）
 │   │   │   │   ├── index.js     # locale store + t() 翻译函数 + 语言检测
 │   │   │   │   ├── zh-CN.js     # 简体中文
 │   │   │   │   ├── zh-TW.js     # 繁体中文
 │   │   │   │   ├── en.js        # English
 │   │   │   │   ├── ja.js        # 日本語
 │   │   │   │   └── ru.js        # Русский
-│   │   │   ├── components/      # 17 个 Svelte 组件
+│   │   │   ├── components/      # 20 个 Svelte 组件
 │   │   │   │   ├── MdButton.svelte         # MD3 通用按钮组件（6 种 variant × 3 种 size）
 │   │   │   │   ├── ConnectionForm.svelte  # 连接管理界面
 │   │   │   │   ├── Sidebar.svelte         # 数据库树形浏览器
 │   │   │   │   ├── DataGrid.svelte        # 数据表格（分页 + 全量流式加载 + 行 CRUD + 列内筛选 + 搜索 + 虚拟滚动）；header 双行：标题/工具栏（上）+ WHERE / ORDER BY（下，中间分割线）
 │   │   │   │   ├── SqlConsole.svelte      # SQL 控制台（SELECT 自动流式 + 虚拟滚动 + 增量 UI 更新）
-│   │   │   │   ├── SqlEditor.svelte       # Monaco 编辑器封装
+│   │   │   │   ├── SqlEditor.svelte       # Monaco 编辑器封装（SQL 语法 + 补全）
 │   │   │   │   ├── MonacoInput.svelte     # Monaco 单行输入封装（WHERE / ORDER BY 补全）
+│   │   │   │   ├── LuaEditor.svelte       # Monaco Lua 编辑器封装（Lua 关键字 + 标准库 + 造数内置函数 + 数据库表/列名补全，StyLua 格式化 Alt+Shift+F）
+│   │   │   │   ├── DataGeneratorPanel.svelte # 造数工作台（单表 + Lua 脚本 + 流式 SQL 日志 + 按表名正则统计）
+│   │   │   │   ├── DataGenHelp.svelte     # 造数工作台帮助弹窗（内置函数 + 6 个示例）
 │   │   │   │   ├── UserPanel.svelte       # 用户与权限管理
 │   │   │   │   ├── SettingsPanel.svelte   # 设置面板（语言/主题/JVM内存/系统信息，支持路由和全局 overlay 两种模式）
 │   │   │   │   ├── TablePanel.svelte      # 表结构编辑器（ALTER TABLE，支持改名）
@@ -80,7 +83,8 @@ idb_desktop/
 │   │   │   │   ├── ConfirmDialog.svelte   # 确认对话框
 │   │   │   │   ├── ContextMenu.svelte     # 右键上下文菜单
 │   │   │   │   ├── ThemeToggle.svelte     # 亮色/暗色/自动主题切换
-│   │   │   │   └── ToastHost.svelte       # Toast 通知容器
+│   │   │   │   ├── ToastHost.svelte       # Toast 通知容器
+│   │   │   │   └── Combobox.svelte        # 自动补全下拉输入
 │   │   │   ├── stores/          # Svelte 状态管理
 │   │   │   │   ├── appState.js  # 活跃连接状态
 │   │   │   │   ├── themeStore.js # 主题偏好 + 自定义主题注入 + 设置持久化（Go 后端）
@@ -91,6 +95,7 @@ idb_desktop/
 │   │   │   ├── temporal.js      # 时间列类型格式化工具
 │   │   │   ├── sqlValidate.js   # WHERE / ORDER BY 方言级 SQL 片段校验（引擎侧二次校验前的早判）
 │   │   │   ├── sqlCompletion.js # Monaco 补全项源（按 driver 区分关键字、函数、DDL/DML）
+│   │   │   ├── luaFormat.js     # StyLua WASM 加载器（Lua 代码格式化，延迟初始化）
 │   │   │   ├── assets/          # 内联 SVG / 图标资源
 │   │   │   └── index.js         # lib 顶层 barrel 导出（轻量）
 │   │   └── routes/
@@ -173,7 +178,7 @@ idb_desktop/
 {
   "id": "uuid-v4-string",
   "category": "SCHEMA | USER | TABLE | DATA | SQL",
-  "action": "LIST | CREATE | UPDATE | DELETE | EXECUTE | GET_DDL",
+  "action": "LIST | CREATE | UPDATE | DELETE | EXECUTE | GET_DDL | GENERATE",
   "connection": {
     "driver": "Mysql | Postgres",
     "host": "127.0.0.1",
@@ -230,6 +235,7 @@ idb_desktop/
 | DATA | CREATE | `{ tableName, values: { col: val, ... } }` | 单行插入；返回 `{ affectedRows }` |
 | DATA | UPDATE | `{ tableName, changes: {...}, where: {...} }` | 多列条件更新；返回 `{ affectedRows }` |
 | DATA | DELETE | `{ tableName, where: {...} }` | 条件删除；返回 `{ affectedRows }` |
+| DATA | GENERATE | `{ luaVersion?, tables: [{ count, script }] }` | **造数**：通过嵌入式 LuaJIT 脚本批量生成数据。`luaVersion` 选 `'luajit'`（默认）/ `'5.1'`-`'5.5'`。`tables` 按数组顺序逐表执行，每张表用其 `script` 调用引擎内置 Lua 函数（`insert`/`lastId`/`random_*`）逐条写库。流式响应每张表完成时推一条 `{table, inserted, total, index, sql}`，末行 `end:true`。详见 [§7.3 数据生成引擎](#73-数据生成引擎jvm-造数) |
 | SQL | EXECUTE | `{ sql }` | 非 SELECT：返回 `{ affectedRows }`；SELECT：自动触发流式多行响应（`stream:true`） |
 
 > 退出信号：向 stdin 写一行 `CMD_EXIT`（或关闭 stdin），引擎即自清理退出。所有日志写 stderr，绝不污染 stdout 协议流。
@@ -330,6 +336,49 @@ type Engine struct {
 - 大字段在序列化前必须按 §9.2 熔断；
 - 处理器内部异常须捕获并填充到响应 envelope 的 `error` 字段，绝不让异常打穿到 stdout，否则会污染下一条消息。
 - WHERE / ORDER BY 片段由前端 `sqlValidate.js` 方言级预校验后透传（禁止关键字白名单 + 引号内豁免），引擎侧仍需二次校验。
+
+### 7.3 数据生成引擎（JVM 造数）
+
+`DATA / GENERATE` action 通过嵌入式 LuaJIT 脚本驱动批量造数，引擎侧负责 Lua 执行 + SQL 生成 + 流式进度回报，前端仅提供脚本文本。
+
+**核心机制**：
+- 引擎内嵌 LuaJIT（可切换为 Lua 5.1-5.5），收到 `tables` 数组后按顺序逐表执行 Lua 脚本；
+- `insert(tableName, rowTable)` 每次调用立即拼装参数化 INSERT 并 `executeBatch()` 写库，**不在内存积累**；
+- 每累计 10,000 行自动 commit，避免长事务锁表（单批最大行数受 `BATCH_SIZE = 1000` 限制，循环执行直至脚本结束）；
+- `lastId()` 返回当前表最近一次批量写入的起始自增 ID（用于子表引用父表）；
+- 流式响应：每张表完成后通过 Wails 事件推送一条 `{table, inserted, total, index, sql}`，末行 `end:true`；前端按 `index` 字段匹配进度条；
+- Lua 沙箱**禁用** `os` / `io` / `debug` / `package` / `require` 等危险模块，杜绝文件读写、命令执行、模块加载。
+
+**Lua 引擎版本**：通过 `payload.luaVersion` 选择，默认 `"luajit"`，可选 `"5.1"` / `"5.2"` / `"5.3"` / `"5.4"` / `"5.5"`。
+
+**内置 Lua 辅助函数**：
+
+| 函数 | 说明 |
+|---|---|
+| `insert(tableName, rowTable)` | 插入一行，返回自增 ID；列值支持 `string` / `number` / `boolean` / `nil`；`number` 自动区分整数（Long）和浮点数（Double） |
+| `lastId()` | 当前表最近一次 `insert()` 的自增主键；无自增列时返回 `nil` |
+| `random_int(min, max)` | 闭区间 `[min, max]` 随机整数 |
+| `random_float(min, max)` | 左闭右开 `[min, max)` 随机浮点数 |
+| `random_string(length)` | 随机字母数字串 `a-zA-Z0-9` |
+| `random_date(start, end)` | `YYYY-MM-DD` 格式日期区间 |
+| `random_email()` / `random_phone()` / `random_name()` / `random_uuid()` | 各种格式随机数据 |
+| `random_enum(...)` | 从给定值中随机选一个 |
+| `count`（全局） | payload 中该表配置的 `count` 值，脚本中直接使用 |
+
+**响应示例**（流式）：
+```json
+{"id":"30","success":true,"stream":true,"end":false,"data":{"table":"users","inserted":100,"total":2,"index":1,"sql":"INSERT INTO `users` (`name`, `email`) VALUES (?, ?)"}}
+{"id":"30","success":true,"stream":true,"end":false,"data":{"table":"orders","inserted":500,"total":2,"index":2,"sql":"INSERT INTO `orders` (...) VALUES (?, ?, ?, ?)"}}
+{"id":"30","success":true,"stream":true,"end":true,"data":null}
+```
+
+**外键引用**（先父表再子表）：
+```json
+{"tables":[
+  {"count":10,"script":"for i = 1, count do\n  insert('categories', { name = '分类_' .. i })\nend"},
+  {"count":100,"script":"local catId = lastId()\nfor i = 1, count do\n  insert('products', {\n    category_id = random_int(catId - 9, catId),\n    name = '商品_' .. random_string(6)\n  })\nend"}
+]}
+```
 
 ---
 
@@ -524,6 +573,61 @@ DataGrid 和 SqlConsole 共享同一套虚拟滚动机制，实现类似 Android
 - **MySQL 专属**：`RLIKE, REGEXP, SOUNDS LIKE, XOR, IGNORE, FORCE, USE INDEX, STRAIGHT_JOIN, DESCRIBE, EXPLAIN, SHOW, TRUNCATE, AUTO_INCREMENT, IF NOT EXISTS, REPLACE`
 - **PostgreSQL 专属**：`ILIKE, SIMILAR TO, ARRAY, JSONB_EXTRACT_PATH, REGEXP_REPLACE, REGEXP_MATCHES, STRING_AGG, GENERATE_SERIES, LATERAL, RETURNING, DO, EXCLUDE`
 
+### 8.11 造数工作台（Data Generator）
+
+[DataGeneratorPanel.svelte](frontend/src/lib/components/DataGeneratorPanel.svelte) + [LuaEditor.svelte](frontend/src/lib/components/LuaEditor.svelte) + [DataGenHelp.svelte](frontend/src/lib/components/DataGenHelp.svelte) 共同构成完整的造数 UI。
+
+**Tab 集成**：
+- 第四种 tab kind `'generator'`，id 格式 `generator:{schema}`，每个 schema 一个 tab；
+- header 按钮 "造数" 直接打开当前 schema 的 tab；
+- sidebar 表右键菜单 "造数" 打开 generator tab。
+
+**单表配置 UI**：
+- 顶部工具栏：连接信息 + Lua 引擎版本下拉（LuaJIT / 5.1-5.5）+ 数量输入 + 格式化按钮 + 运行按钮；
+- 主体：Monaco Lua 编辑器（`flex-1` 撑满剩余空间）；
+- 底部：SQL 日志区（固定 35% 高度，可滚动，最多 500 行）。
+
+**API 入口**：[api/index.js](frontend/src/lib/api/index.js) 的 `generateData(connection, tables, onProgress, options)`：
+```js
+generateData(conn, [{ count, script }], onRow, { luaVersion: '5.4' })
+```
+tables 项只传 `count` 和 `script`，表名由脚本中 `insert('table', ...)` 决定。
+
+**流式响应处理**（节流防卡顿）：
+- `onRow` 回调**直接写**到普通对象缓冲区（`logBuf`、`latestCounts`），不触发任何 `$state` 赋值；
+- `setInterval(flushLogs, 100)` 每 100ms 一次性刷入 `$state sqlLogs` / `$state insertCounts` 触发 UI 更新；
+- 即使引擎每秒推 1 万条消息，UI 也只 re-render ~10 次/秒。
+
+**按表名统计**（从 SQL 正则提取）：
+```js
+const TABLE_RE = /INSERT\s+INTO\s+[`'"]?(\w+)[`'"]?/i;
+const m = TABLE_RE.exec(data.sql);
+if (m) latestCounts[m[1]] = (latestCounts[m[1]] || 0) + 1;
+```
+标题栏为每张出现的表名显示一个 `表名 已插入 N 行` 的圆角 badge。
+
+**Monaco Lua 编辑器**（[LuaEditor.svelte](frontend/src/lib/components/LuaEditor.svelte)）：
+- `language: 'lua'`（Monaco 内建 tokenizer）；
+- 主题随 `resolvedTheme` 切换（`idb-light` / `idb-dark`）；
+- 补全项分类（`sortText` 控制排序）：
+  - `0` 前缀：数据库表名（`Struct`）
+  - `1` 前缀：数据库列名（`Field`，detail 显示 `table.column type`）
+  - `2` 前缀：造数内置函数（`Function`，snippet 展开）
+  - 默认：Lua 关键字 + 标准库（`print`/`type`/`tostring`/`pairs`/`math.*`/`string.*`/`table.*`）
+- 数据库元数据在 panel 挂载时通过 `listTables` → 逐表 `listColumns` 加载，注入到编辑器 props；
+- `Ctrl+Enter` 触发 `onCtrlEnter`（执行生成），`Alt+Shift+F` 触发 `onFormat`（格式化）。
+
+**代码格式化**（[luaFormat.js](frontend/src/lib/luaFormat.js)）：
+- 基于 `stylua-wasm`（StyLua WASM 包），首次调用时延迟加载并初始化 WASM（单例），后续直接复用；
+- Vite 编译时把 `.wasm` 文件作为静态资源（`?url` 后缀），运行期按 URL 加载；
+- 配置：`column_width=120` / `indent_width=2` / `AutoPreferDouble` / `Unix`；
+- 加载失败时 fallback 到原文（不阻塞用户）。
+
+**帮助文档**（[DataGenHelp.svelte](frontend/src/lib/components/DataGenHelp.svelte)）：
+- 标题栏 `?` 按钮触发 Modal 弹窗（`size="lg"`）；
+- 包含内置函数详解 + 6 个 Lua 脚本示例（单表基础 / 随机函数 / 外键引用 / 同脚本多表 / 电商订单 / Lua 高级特性）；
+- 全部 34 个 `dg.help.*` 描述性文本在 5 个语言文件中翻译。
+
 ---
 
 ## 9. 安全与边界规范
@@ -602,7 +706,7 @@ cd frontend && npm run lint
 | MD3 Token / Tailwind theme | ✅ 完整 MD3 令牌注入 + 亮色/暗色/自动主题 + 自定义主题加载（`~/.config/idb/theme/*.css`） |
 | 上下文菜单 / Toast 通知 | ✅ 右键菜单（dev 模式可用原生菜单） + Toast |
 | 只读系统库保护 | ✅ MySQL 系统 schema 写操作拦截 + 写关键字检测 |
-| 多语言（i18n） | ✅ 5 种语言（zh-CN / zh-TW / en / ja / ru），`$t('key')` 翻译函数，220+ 翻译 key |
+| 多语言（i18n） | ✅ 5 种语言（zh-CN / zh-TW / en / ja / ru），`$t('key')` 翻译函数，390+ 翻译 key |
 | 自定义主题 | ✅ 从 `~/.config/idb/theme/*.css` 加载，支持亮色/暗色分别指定，内置赛博朋克主题 |
 | 首次引导页 | ✅ `/setup` 路由：语言选择（下拉预览）→ 主题模式选择，MD3 动画过渡 |
 | 设置页 | ✅ `/settings` 路由：语言切换、主题模式、自定义主题选择、性能设置、系统信息展示、主题文件格式说明 |
@@ -613,3 +717,4 @@ cd frontend && npm run lint
 | Linux 分发包 | ✅ tar.gz + run.sh 启动器 |
 | Makefile 自动化 | ✅ 双平台构建 + Azul Zulu JRE 21 自动下载 + deps 依赖自检 |
 | 虚拟滚动 | ✅ DataGrid + SqlConsole 共享虚拟滚动机制（spacer 上下定位 + keyed DOM 复用 + 流式过程即时激活 + 列宽测量锁定） |
+| 造数工作台（GENERATE） | ✅ 引擎侧 LuaJIT 沙箱 + 内置 `insert`/`lastId`/`random_*` 函数 + 多表按序 + 流式进度；前端 Monaco Lua 编辑器（关键字 + 标准库 + 造数内置 + 数据库表/列名补全 + StyLua WASM 格式化）+ 节流 SQL 日志 + 按表名正则统计 + 5 语言完整翻译的帮助弹窗 |
