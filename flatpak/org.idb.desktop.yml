@@ -1,0 +1,54 @@
+app-id: org.idb.desktop
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: idb_desktop
+
+finish-args:
+  # GTK3 / WebKit2GTK 渲染
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=fallback-x11
+  # 数据库连接需要网络
+  - --share=network
+  # 访问配置目录（保存的连接、设置）
+  - --filesystem=~/.config/idb
+  # D-Bus 桌面集成
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: idb-desktop
+    buildsystem: simple
+    build-commands:
+      # 二进制
+      - install -Dm755 idb_desktop /app/bin/idb_desktop
+
+      # 引擎（JAR + JRE）
+      - cp -r engine /app/engine
+      - chmod -R a+rX /app/engine
+
+      # wrapper 脚本：设置 LD_LIBRARY_PATH
+      - |
+        cat > /app/bin/idb_desktop-wrapper << 'EOF'
+        #!/bin/sh
+        export LD_LIBRARY_PATH="/app/engine/jre/lib:${LD_LIBRARY_PATH:-}"
+        export JAVA_HOME="/app/engine/jre"
+        exec /app/bin/idb_desktop "$@"
+        EOF
+      - chmod +x /app/bin/idb_desktop-wrapper
+
+      # .desktop 文件（Flatpak 要求 id 匹配）
+      - install -Dm644 idb_desktop.desktop /app/share/applications/org.idb.desktop.desktop
+      - sed -i 's|Exec=/opt/idb_desktop/idb_desktop|Exec=idb_desktop|' /app/share/applications/org.idb.desktop.desktop
+
+      # 图标
+      - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/org.idb.desktop.png
+
+      # AppStream metainfo
+      - install -Dm644 idb_desktop.metainfo.xml /app/share/metainfo/org.idb.desktop.metainfo.xml
+      - sed -i 's|idb_desktop.desktop|org.idb.desktop.desktop|' /app/share/metainfo/org.idb.desktop.metainfo.xml
+
+    sources:
+      - type: dir
+        path: staging

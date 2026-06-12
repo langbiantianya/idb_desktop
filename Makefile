@@ -276,16 +276,72 @@ package-windows-arm64: deps jre-download-arm64
 package-windows: package-windows-amd64 package-windows-arm64
 
 # =============================================================================
-# Linux 分发包(tar.gz)
+# Linux 构建（Docker buildx，支持 amd64 + arm64）
+# --------------------------------------------------------------------
+# 前提：宿主机需注册 QEMU 模拟器（一次性）：
+#   docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+#
+# 构建流程：
+#   1. Docker 按格式+架构选择 Dockerfile（deb→Debian 12, rpm→AlmaLinux 9, tar/flatpak→Ubuntu 22.04）
+#   2. 容器内执行 wails build --platform linux/<arch>
+#   3. 容器内调用对应的 package-<format>.sh 打包
+#   4. 产物写入 build/bin/
+#
+# 可用 target：
+#   package-linux-deb-amd64 / package-linux-deb-arm64     .deb 包
+#   package-linux-rpm-amd64 / package-linux-rpm-arm64     .rpm 包
+#   package-linux-tar-amd64 / package-linux-tar-arm64     .tar.gz 包
+#   package-linux-flatpak                                  Flatpak bundle
+#   package-linux                                          → package-linux-tar-amd64（向后兼容）
 # =============================================================================
 
+# Docker 构建宏：$(1)=arch  $(2)=format
+define LINUX_DOCKER_BUILD
+	bash scripts/docker-build.sh $(1) $(2)
+endef
+
+# --- .deb ---
+.PHONY: package-linux-deb-amd64
+package-linux-deb-amd64:
+	@echo "=== 构建 Linux .deb (amd64) ==="
+	$(call LINUX_DOCKER_BUILD,amd64,deb)
+
+.PHONY: package-linux-deb-arm64
+package-linux-deb-arm64:
+	@echo "=== 构建 Linux .deb (arm64) ==="
+	$(call LINUX_DOCKER_BUILD,arm64,deb)
+
+# --- .rpm ---
+.PHONY: package-linux-rpm-amd64
+package-linux-rpm-amd64:
+	@echo "=== 构建 Linux .rpm (amd64) ==="
+	$(call LINUX_DOCKER_BUILD,amd64,rpm)
+
+.PHONY: package-linux-rpm-arm64
+package-linux-rpm-arm64:
+	@echo "=== 构建 Linux .rpm (arm64) ==="
+	$(call LINUX_DOCKER_BUILD,arm64,rpm)
+
+# --- .tar.gz ---
+.PHONY: package-linux-tar-amd64
+package-linux-tar-amd64:
+	@echo "=== 构建 Linux .tar.gz (amd64) ==="
+	$(call LINUX_DOCKER_BUILD,amd64,tar)
+
+.PHONY: package-linux-tar-arm64
+package-linux-tar-arm64:
+	@echo "=== 构建 Linux .tar.gz (arm64) ==="
+	$(call LINUX_DOCKER_BUILD,arm64,tar)
+
+# --- Flatpak ---
+.PHONY: package-linux-flatpak
+package-linux-flatpak:
+	@echo "=== 构建 Linux Flatpak ==="
+	$(call LINUX_DOCKER_BUILD,amd64,flatpak)
+
+# 向后兼容：默认 amd64 tar.gz
 .PHONY: package-linux
-package-linux: deps
-	@echo "=== 构建 Linux amd64 分发包 ==="
-	wails build --platform linux/amd64 -devtools
-	@echo "=== 打包 tar.gz ==="
-	bash scripts/package-linux.sh "$(APP_NAME)" "$(VERSION)" "$(BUILD_DIR)" "$(ENGINE_DIR)"
-	@echo "=== Linux 分发包: $(BUILD_DIR)/$(APP_NAME)-linux-amd64-v$(VERSION).tar.gz ==="
+package-linux: package-linux-tar-amd64
 
 # =============================================================================
 # 全平台

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.idb.desktop</id>
+  <name>IDB Desktop</name>
+  <summary>Cross-platform database management tool</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="org.idb">
+    <name>IDB</name>
+  </developer>
+  <description>
+    <p>
+      IDB Desktop is a lightweight, local-first database client for MySQL and PostgreSQL.
+      It features a bundled JVM engine, Lua-based data generation, Monaco SQL editor,
+      Material Design 3 interface, and supports 5 languages.
+    </p>
+  </description>
+  <launchable type="desktop-id">idb_desktop.desktop</launchable>
+  <provides>
+    <binary>idb_desktop</binary>
+  </provides>
+  <releases>
+    <release version="0.1.0" date="2026-06-12">
+      <description><p>Initial release.</p></description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1" />
+</component>

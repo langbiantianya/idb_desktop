@@ -1,0 +1,36 @@
+# =============================================================================
+# IDB Desktop — AlmaLinux 9 构建容器（.rpm 打包）
+# =============================================================================
+FROM almalinux:9
+
+ARG GO_VERSION=1.23.10
+ARG NODE_MAJOR=20
+ARG TARGETARCH
+
+# 换阿里云镜像源
+RUN sed -i 's|repo.almalinux.org|mirrors.aliyun.com|g' /etc/yum.repos.d/almalinux-*.repo
+
+# Wails 依赖：GTK3 + WebKit2GTK 4.1
+# 打包工具：rpm-build
+RUN dnf install -y \
+    gcc gcc-c++ make pkgconfig \
+    gtk3-devel webkit2gtk4.1-devel \
+    libappindicator-gtk3-devel \
+    rpm-build \
+    curl ca-certificates git \
+    && dnf clean all
+
+# Go（国内镜像）
+RUN curl -fsSL "https://mirrors.aliyun.com/golang/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
+    | tar -C /usr/local -xz
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+# Node.js
+RUN curl -fsSL "https://rpm.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
+    && dnf install -y nodejs \
+    && dnf clean all
+
+# Wails CLI
+RUN go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+WORKDIR /app

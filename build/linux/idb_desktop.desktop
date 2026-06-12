@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=IDB Desktop
+GenericName=Database Client
+Comment=Cross-platform database management tool for MySQL and PostgreSQL
+Exec=/opt/idb_desktop/idb_desktop %U
+Icon=idb_desktop
+Terminal=false
+Categories=Development;Database;
+StartupWMClass=idb_desktop
