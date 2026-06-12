@@ -1,4 +1,4 @@
-/engine/jre
+/engine/jre*
 /node_modules
 /frontend/build
 /frontend/.svelte-kit
