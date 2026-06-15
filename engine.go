@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"time"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -33,11 +34,108 @@ type Engine struct {
 	done      chan struct{} // reader 退出 / 引擎死掉时关闭
 	closeOnce sync.Once
 	closeErr  error // 终止原因，新请求和等待中的请求都会拿到它
+
+	batcher *streamBatcher // 流式消息攒批器，减少 IPC 次数
 }
 
 // 行缓冲上限：默认 64KB 容易被分页结果撑爆，放宽到 8MB；
 // 仍依赖大字段熔断（CLAUDE.md §9）做语义层兜底。
 const engineMaxLine = 8 * 1024 * 1024
+
+// streamBatcher 将流式响应攒批后一次性通过 Wails EventsEmit 推送，避免高频 IPC 淹没前端 UI 线程。
+// 数据消息（stream=true, end=false）先缓冲，每 100ms 或收到 end 消息时一次性 emit 数组；
+// end 消息（stream=true, end=true）触发立即 flush（含缓冲数据 + end 事件），保证前端收到 end 时所有数据已送达。
+type streamBatcher struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	mu     sync.Mutex
+	bufs   map[string]*streamBuf // id → 缓冲区
+}
+
+type streamBuf struct {
+	msgs []string
+}
+
+func newStreamBatcher(parent context.Context) *streamBatcher {
+	ctx, cancel := context.WithCancel(parent)
+	sb := &streamBatcher{ctx: ctx, cancel: cancel, bufs: make(map[string]*streamBuf)}
+	go sb.loop()
+	return sb
+}
+
+func (sb *streamBatcher) loop() {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-sb.ctx.Done():
+			sb.flushAll()
+			return
+		case <-ticker.C:
+			sb.flushAll()
+		}
+	}
+}
+
+// flushAll 一次性 emit 所有已缓冲的流式消息。
+func (sb *streamBatcher) flushAll() {
+	sb.mu.Lock()
+	if len(sb.bufs) == 0 {
+		sb.mu.Unlock()
+		return
+	}
+	snap := make(map[string][]string, len(sb.bufs))
+	for id, b := range sb.bufs {
+		if len(b.msgs) > 0 {
+			snap[id] = b.msgs
+			b.msgs = b.msgs[:0]
+		}
+	}
+	sb.mu.Unlock()
+
+	for id, msgs := range snap {
+		if len(msgs) == 1 {
+			wruntime.EventsEmit(sb.ctx, "engine:stream:"+id, msgs[0])
+		} else {
+			wruntime.EventsEmit(sb.ctx, "engine:stream:"+id, msgs)
+		}
+	}
+}
+
+// push 缓冲一条流式消息。如果 msg 是 end（end=true），立即 flush 该 id 的所有缓冲消息
+// 并单独 emit end 事件，保证前端收到 end 时数据已全部送达。
+func (sb *streamBatcher) push(id, msg string, end bool) {
+	if end {
+		// end 消息：先 flush 缓冲数据，再单独 emit end 事件
+		sb.mu.Lock()
+		b := sb.bufs[id]
+		var pending []string
+		if b != nil {
+			pending = b.msgs
+			b.msgs = b.msgs[:0]
+			delete(sb.bufs, id)
+		}
+		sb.mu.Unlock()
+
+		for _, m := range pending {
+			wruntime.EventsEmit(sb.ctx, "engine:stream:"+id, m)
+		}
+		wruntime.EventsEmit(sb.ctx, "engine:stream-end:"+id, msg)
+		return
+	}
+
+	// 数据消息：缓冲
+	sb.mu.Lock()
+	b, ok := sb.bufs[id]
+	if !ok {
+		b = &streamBuf{}
+		sb.bufs[id] = b
+	}
+	b.msgs = append(b.msgs, msg)
+	sb.mu.Unlock()
+}
+
+func (sb *streamBatcher) stop() { sb.cancel() }
 
 // resolveAppDir 推导引擎资源所在目录。
 //   - 生产分发：取可执行文件目录（engine/ 与可执行文件同级）。
@@ -114,6 +212,7 @@ func StartEngine(ctx context.Context, maxMemoryMB int) (*Engine, error) {
 		ctx:     ctx,
 		pending: make(map[string]chan string),
 		done:    make(chan struct{}),
+		batcher: newStreamBatcher(ctx),
 	}
 
 	go e.readLoop()
@@ -139,27 +238,17 @@ func (e *Engine) readLoop() {
 		}
 
 		if meta.Stream {
-			// 流式响应：推送事件到前端
-			eventName := "engine:stream:" + meta.ID
-			if meta.End {
-				eventName = "engine:stream-end:" + meta.ID
-			}
-			wruntime.EventsEmit(e.ctx, eventName, line)
+			// 流式响应：数据消息走 batcher 攒批，end 消息立即 flush + emit
+			e.batcher.push(meta.ID, line, meta.End)
 
 			if meta.End {
-				// 流结束，从 pending 移除，并写一个结束标记到 channel（唤醒 Invoke）
+				// 流结束：从 pending 移除（前端通过事件接收结束信号）
 				e.pendMu.Lock()
-				ch, ok := e.pending[meta.ID]
 				delete(e.pending, meta.ID)
 				e.pendMu.Unlock()
-				if ok {
-					select {
-					case ch <- line:
-					default:
-					}
-				}
 			} else {
-				// 流式首条消息：写入 channel 让 Invoke 拿到并判断是否流式
+				// 流式数据行：尝试写 channel 唤醒 Invoke。
+				// 首条消息会成功（Invoke 在等待），后续消息会被 drop（Invoke 已返回）。
 				e.pendMu.Lock()
 				ch, ok := e.pending[meta.ID]
 				e.pendMu.Unlock()
@@ -222,9 +311,9 @@ func (e *Engine) closeAll(reason error) {
 			case ch <- synth:
 			default:
 			}
-			// 流式等待者：通过事件通知前端流结束（带错误信息）
+			// 流式等待者：flush 缓冲数据后通过事件通知前端流结束（带错误信息）
 			errEvent := fmt.Sprintf(`{"id":%q,"success":false,"error":%q,"stream":true,"end":true}`, id, errMsg)
-			wruntime.EventsEmit(e.ctx, "engine:stream-end:"+id, errEvent)
+			e.batcher.push(id, errEvent, true)
 		}
 	})
 }
@@ -310,6 +399,10 @@ func (e *Engine) InvokeStreaming(reqJSON string) (string, error) {
 		e.pendMu.Unlock()
 		return "", e.closeErr
 	}
+	if _, dup := e.pending[meta.ID]; dup {
+		e.pendMu.Unlock()
+		return "", fmt.Errorf("duplicate request id %s", meta.ID)
+	}
 	e.pending[meta.ID] = ch
 	e.pendMu.Unlock()
 
@@ -346,6 +439,11 @@ func (e *Engine) Shutdown() {
 
 	// 兜底：若 reader 已经退出而 closeAll 尚未被调用（极少见），这里也补一次。
 	e.closeAll(errors.New("engine shutting down"))
+
+	// 停止流式消息攒批器，flush 剩余缓冲数据
+	if e.batcher != nil {
+		e.batcher.stop()
+	}
 }
 
 // truncateForLog 对超长响应日志做安全截断，避免把 8MB 行原样灌进日志。

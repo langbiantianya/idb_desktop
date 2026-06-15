@@ -164,6 +164,7 @@
 				tabSize: 2,
 				suggestOnTriggerCharacters: true,
 				quickSuggestions: { other: true, comments: false, strings: false },
+				acceptSuggestionOnEnter: 'off',
 				placeholder
 			});
 

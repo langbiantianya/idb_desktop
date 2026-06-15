@@ -135,12 +135,15 @@ export async function invokeStreaming(category, action, connection, payload, onR
 			}
 		});
 
-		// 注册流式数据行事件
-		EventsOn(streamEventName, (/** @type {string} */ raw) => {
+		// 注册流式数据行事件（Go batcher 可能发送单条字符串或字符串数组）
+		EventsOn(streamEventName, (/** @type {string | string[]} */ raw) => {
 			try {
-				const parsed = JSON.parse(raw);
-				if (parsed.data) {
-					onRow(parsed.data);
+				const items = Array.isArray(raw) ? raw : [raw];
+				for (const item of items) {
+					const parsed = JSON.parse(item);
+					if (parsed.data) {
+						onRow(parsed.data);
+					}
 				}
 			} catch {
 				// 忽略无法解析的行

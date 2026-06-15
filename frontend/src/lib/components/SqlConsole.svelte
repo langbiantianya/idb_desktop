@@ -466,6 +466,8 @@
 						// SELECT 走流式响应
 						const accRows = [];
 						const colSet = new Set();
+						/** @type {unknown[]} */
+						const rawBuf = [];
 						vsStreaming = true;
 						// 先占位，流式过程中增量更新
 						const idx = collected.length;
@@ -473,39 +475,47 @@
 						results = [...collected];
 						activeResultIdx = idx;
 
-						const resp = await executeSqlStreaming(schemaConn, stmt, (data) => {
-							if (data && typeof data === 'object') {
-								const d = /** @type {Record<string, unknown>} */ (data);
-								const rowArr = Array.isArray(d.rows) ? d.rows : [];
-								for (const row of rowArr) {
-									accRows.push(row);
-									if (row && typeof row === 'object') {
-										for (const k of Object.keys(row)) colSet.add(k);
-									}
-								}
-								// 每 100 行增量刷新 UI
-								if (accRows.length % 100 === 0) {
-									const cols = [...colSet];
-									collected[idx] = { ...collected[idx], rows: [...accRows], columns: cols };
-									results = [...collected];
-									// 超过阈值启用虚拟滚动
-									if (!vsActive && accRows.length > VS_THRESHOLD) {
-										vsActive = true;
+						// 100ms 窗口：统一解析 + 刷 UI
+						const flushTimer = setInterval(() => {
+							if (rawBuf.length === 0) return;
+							const batch = rawBuf.splice(0);
+							for (const data of batch) {
+								if (data && typeof data === 'object') {
+									const d = /** @type {Record<string, unknown>} */ (data);
+									const rowArr = Array.isArray(d.rows) ? d.rows : [];
+									for (const row of rowArr) {
+										accRows.push(row);
+										if (row && typeof row === 'object') {
+											for (const k of Object.keys(row)) colSet.add(k);
+										}
 									}
 								}
 							}
-						});
-						vsStreaming = false;
-						if (!resp.success) {
-							collected[idx] = { sql: stmt, success: false, error: resp.error ?? get(t)('sql.exec_failed'), rows: [], columns: [], affectedRows: null };
-						} else {
 							const cols = [...colSet];
-							collected[idx] = { sql: stmt, success: true, error: null, rows: accRows, columns: cols, affectedRows: null };
+							collected[idx] = { ...collected[idx], rows: [...accRows], columns: cols };
+							results = [...collected];
+							if (!vsActive && accRows.length > VS_THRESHOLD) {
+								vsActive = true;
+							}
+						}, 100);
+
+						try {
+							const resp = await executeSqlStreaming(schemaConn, stmt, (data) => {
+								rawBuf.push(data);
+							});
+							vsStreaming = false;
+							if (!resp.success) {
+								collected[idx] = { sql: stmt, success: false, error: resp.error ?? get(t)('sql.exec_failed'), rows: [], columns: [], affectedRows: null };
+							} else {
+								const cols = [...colSet];
+								collected[idx] = { sql: stmt, success: true, error: null, rows: accRows, columns: cols, affectedRows: null };
+							}
+							results = [...collected];
+							if (accRows.length > VS_THRESHOLD && !vsActive) vsActive = true;
+							if (vsActive) { vsColsLocked = false; vsColWidths = []; }
+						} finally {
+							clearInterval(flushTimer);
 						}
-						results = [...collected];
-						// 最终确认虚拟模式 + 触发列宽测量
-						if (accRows.length > VS_THRESHOLD && !vsActive) vsActive = true;
-						if (vsActive) { vsColsLocked = false; vsColWidths = []; }
 					} else {
 						// 非 SELECT 走普通响应
 						const resp = await executeSql(schemaConn, stmt);

@@ -65,6 +65,8 @@
 	let logBuf = [];
 	/** @type {Record<string, number>} */
 	let latestCounts = {};
+	/** 原始数据缓冲（onRow 只 push，flush 时统一解析） */
+	let rawBuf = [];
 	let logFlushTimer = /** @type {ReturnType<typeof setInterval>} */ (0);
 	let logEl = $state(/** @type {HTMLDivElement | null} */ (null));
 
@@ -72,6 +74,18 @@
 	const TABLE_RE = /INSERT\s+INTO\s+[`'"]?(\w+)[`'"]?/i;
 
 	function flushLogs() {
+		// 在 flush 窗口统一处理：SQL 提取 + 表名正则计数
+		for (const data of rawBuf) {
+			if (data.sql) {
+				logBuf.push(data.sql);
+				const m = TABLE_RE.exec(data.sql);
+				if (m) {
+					const tbl = m[1];
+					latestCounts[tbl] = (latestCounts[tbl] || 0) + 1;
+				}
+			}
+		}
+		rawBuf = [];
 		const hasCounts = Object.keys(latestCounts).some(
 			(k) => latestCounts[k] !== insertCounts[k]
 		);
@@ -106,6 +120,7 @@
 		running = true;
 		sqlLogs = [];
 		logBuf = [];
+		rawBuf = [];
 		insertCounts = {};
 		latestCounts = {};
 		logFlushTimer = setInterval(flushLogs, 100);
@@ -114,14 +129,7 @@
 
 		try {
 			const resp = await generateData(schemaConn, tables, (data) => {
-				if (data.sql) {
-					logBuf.push(data.sql);
-					const m = TABLE_RE.exec(data.sql);
-					if (m) {
-						const tbl = m[1];
-						latestCounts[tbl] = (latestCounts[tbl] || 0) + 1;
-					}
-				}
+				rawBuf.push(data);
 			}, { luaVersion });
 
 			if (resp.success) {

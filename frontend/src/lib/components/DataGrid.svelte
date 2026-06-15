@@ -267,38 +267,44 @@
 		columns = [];
 		const accRows = [];
 		const colSet = new Set();
+		/** @type {unknown[]} */
+		const rawBuf = [];
 		const opts = {};
 		const w = stripLeadingKeyword(whereClause, 'WHERE');
 		if (w) opts.where = w;
 		const o = stripLeadingKeyword(orderByClause, 'ORDER BY');
 		if (o) opts.orderBy = o;
+
+		// 100ms 窗口：统一解析 + 刷 UI
+		const flushTimer = setInterval(() => {
+			if (rawBuf.length === 0) return;
+			const batch = rawBuf.splice(0);
+			for (const data of batch) {
+				if (data && typeof data === 'object') {
+					const d = /** @type {Record<string, unknown>} */ (data);
+					if (d.total != null && typeof d.total === 'number') total = d.total;
+					const rowArr = Array.isArray(d.rows) ? d.rows : [];
+					for (const row of rowArr) {
+						accRows.push(row);
+						if (row && typeof row === 'object') {
+							for (const k of Object.keys(row)) colSet.add(k);
+						}
+					}
+				}
+			}
+			streamedRowCount = accRows.length;
+			rows = [...accRows];
+			columns = [...colSet];
+			if (!virtualActive && accRows.length > VIRTUAL_THRESHOLD) {
+				virtualActive = true;
+			}
+		}, 100);
+
 		try {
 			const resp = await listDataStreaming(
 				schemaConn,
 				tableName,
-				(data) => {
-					if (data && typeof data === 'object') {
-						const d = /** @type {Record<string, unknown>} */ (data);
-						if (d.total != null && typeof d.total === 'number') total = d.total;
-						const rowArr = Array.isArray(d.rows) ? d.rows : [];
-						for (const row of rowArr) {
-							accRows.push(row);
-							if (row && typeof row === 'object') {
-								for (const k of Object.keys(row)) colSet.add(k);
-							}
-						}
-						streamedRowCount = accRows.length;
-						// 每 100 行刷新一次 UI
-						if (accRows.length % 100 === 0) {
-							rows = [...accRows];
-							columns = [...colSet];
-							// 行数超过阈值时立即启用虚拟滚动，避免 DOM 节点爆炸
-							if (!virtualActive && accRows.length > VIRTUAL_THRESHOLD) {
-								virtualActive = true;
-							}
-						}
-					}
-				},
+				(data) => { rawBuf.push(data); },
 				opts
 			);
 			if (!resp.success) {
@@ -307,16 +313,15 @@
 			// 最终刷新
 			rows = accRows;
 			columns = [...colSet];
-			// 确保虚拟模式已启用（可能在流式过程中已激活）
 			if (accRows.length > VIRTUAL_THRESHOLD && !virtualActive) {
 				virtualActive = true;
 			}
-			// 列已全部发现，重置测量标记以触发列宽锁定
 			if (virtualActive) {
 				colsMeasured = false;
 				colWidths = [];
 			}
 		} finally {
+			clearInterval(flushTimer);
 			streaming = false;
 			streamedRowCount = 0;
 		}
@@ -342,6 +347,9 @@
 		if (newSize === 0) {
 			loadStreaming();
 		} else {
+			// 先清空行数据，防止 Svelte 在 load() 返回前用全量 rows 走非虚拟渲染（卡死 UI）
+			rows = [];
+			columns = [];
 			load();
 		}
 	}
