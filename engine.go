@@ -182,6 +182,10 @@ func StartEngine(ctx context.Context, maxMemoryMB int) (*Engine, error) {
 		"-Xms32m",
 		fmt.Sprintf("-Xmx%dm", maxMemoryMB),
 		"-XX:+UseSerialGC",
+		"-XX:NewRatio=1",              // young:old = 1:1，young gen 更大 → 更频繁 minor GC 及时回收短命对象
+		"-XX:MaxTenuringThreshold=6",  // 更早晋升 old gen（默认 15），减少 survivor 来回拷贝开销
+		"-XX:MinHeapFreeRatio=10",     // 堆空闲低于 10% 时扩容
+		"-XX:MaxHeapFreeRatio=25",     // 堆空闲高于 25% 时缩容，主动还内存给 OS
 		"-jar", jarPath,
 	)
 	cmd.Dir = appDir
