@@ -1,6 +1,6 @@
 # idb_desktop
 
-本地化、绿色启动的多数据库（**MySQL** / **PostgreSQL**）运维桌面客户端。
+本地化的多数据库（**MySQL** / **PostgreSQL**）桌面客户端。
 
 基于 **Wails v2** + **SvelteKit** + **Svelte 5** + **Tailwind CSS 4**，遵循 Material Design 3。
 
@@ -8,8 +8,6 @@
 
 ## 特色
 
-- **零端口通信** — 前端 ↔ Go 走 Wails 内存 IPC，Go ↔ JVM 引擎走 stdin/stdout JSON 管道，全程无网络端口
-- **绿色启动** — 单文件即用（Windows NSIS / Linux tar.gz），JVM 引擎与 JRE 一同捆绑
 - **造数工作台** — Lua 脚本驱动批量造数，内置 11 个随机函数 + 多 Lua 版本支持 + Monaco 编辑器（关键字/标准库/数据库元数据补全）+ StyLua 格式化 + 流式 SQL 日志
 - **数据浏览与编辑** — 三级树形浏览 + 分页/全量流式 + 虚拟滚动 + 行级 CRUD + 列内筛选
 - **SQL 控制台** — Monaco 编辑器 + 按 driver 智能补全 + 多语句执行 + SELECT 流式返回
