@@ -11,7 +11,6 @@
 #   make package-windows-arm64   构建 Windows arm64 安装包（NSIS .exe）
 #   make package-windows         构建 Windows amd64 + arm64 安装包
 #   make package-linux           构建 Linux amd64 分发包（.tar.gz）
-#   make package-all             构建所有平台安装包
 #   make clean                   清理构建产物
 # =============================================================================
 
@@ -343,12 +342,6 @@ package-linux-flatpak:
 .PHONY: package-linux
 package-linux: package-linux-tar-amd64
 
-# =============================================================================
-# 全平台
-# =============================================================================
-
-.PHONY: package-all
-package-all: package-windows package-linux
 
 # =============================================================================
 # 清理
