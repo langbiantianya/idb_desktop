@@ -9,7 +9,7 @@ import {
 import { EventsOn, EventsOnce, EventsOff } from '../../../wailsjs/runtime/runtime.js';
 import { validateWhere, validateOrderBy } from '../sqlValidate.js';
 
-/** @typedef {'Mysql' | 'Postgres'} Driver */
+/** @typedef {'Mysql' | 'Postgresql'} Driver */
 /** @typedef {'SCHEMA' | 'USER' | 'TABLE' | 'DATA' | 'SQL'} Category */
 /** @typedef {'LIST' | 'CREATE' | 'UPDATE' | 'DELETE' | 'EXECUTE' | 'GET_DDL' | 'GENERATE'} Action */
 
