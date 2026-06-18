@@ -22,6 +22,7 @@ import { validateWhere, validateOrderBy } from '../sqlValidate.js';
  * @property {string} password
  * @property {string} database
  * @property {string} [name]
+ * @property {string} [_schema]  - 内部字段：当前 PostgreSQL schema，由 invoke 自动提取注入 payload
  */
 
 /**
@@ -77,7 +78,17 @@ function validationError(msg) {
  */
 export async function invoke(category, action, connection, payload = {}) {
 	/** @type {Request} */
-	const req = { id: uuid(), category, action, connection, payload };
+	const conn = { ...connection };
+	const schema = conn._schema;
+	delete conn._schema; // 不发送内部字段到引擎
+
+	// PostgreSQL: 自动将 _schema 注入到 TABLE/DATA/SQL 操作的 payload 中
+	if (schema && conn.driver === 'Postgresql'
+		&& category !== 'SCHEMA' && category !== 'SYSTEM' && category !== 'USER') {
+		payload = { ...payload, schema };
+	}
+
+	const req = { id: uuid(), category, action, connection: conn, payload };
 	const raw = await FetchDatabaseData(JSON.stringify(req));
 	try {
 		return JSON.parse(raw);
@@ -104,7 +115,17 @@ export async function invoke(category, action, connection, payload = {}) {
  */
 export async function invokeStreaming(category, action, connection, payload, onRow) {
 	/** @type {Request} */
-	const req = { id: uuid(), category, action, connection, payload };
+	const conn = { ...connection };
+	const schema = conn._schema;
+	delete conn._schema;
+
+	// PostgreSQL: 自动将 _schema 注入到 TABLE/DATA/SQL 操作的 payload 中
+	if (schema && conn.driver === 'Postgresql'
+		&& category !== 'SCHEMA' && category !== 'SYSTEM') {
+		payload = { ...payload, schema };
+	}
+
+	const req = { id: uuid(), category, action, connection: conn, payload };
 	const id = req.id;
 	console.log('[invokeStreaming] sending request', { id, category, action, payload });
 
@@ -178,8 +199,12 @@ export async function invokeStreaming(category, action, connection, payload, onR
 
 // -------- SCHEMA --------
 
-/** @param {ConnectionConfig} connection */
-export const listSchemas = (connection) => invoke('SCHEMA', 'LIST', connection);
+/**
+ * @param {ConnectionConfig} connection
+ * @param {{ database?: string }} [opts] - PostgreSQL 两级查询：传 database 返回该库的 schema 列表，不传返回数据库列表
+ */
+export const listSchemas = (connection, opts) =>
+	invoke('SCHEMA', 'LIST', connection, opts?.database ? { database: opts.database } : {});
 
 /**
  * @param {ConnectionConfig} connection

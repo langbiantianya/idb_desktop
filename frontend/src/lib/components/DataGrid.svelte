@@ -204,7 +204,7 @@
 	// gotoPage / changePageSize 只更新状态，直接调用 load / loadStreaming，不经过 effect。
 	let _prevSig = $state('');
 	$effect(() => {
-		const sig = `${schemaConn.driver}|${schemaConn.host}|${schemaConn.port}|${schemaConn.database}|${tableName}|${reloadKey}`;
+		const sig = `${schemaConn.driver}|${schemaConn.host}|${schemaConn.port}|${schemaConn.database}|${schemaConn._schema || ''}|${tableName}|${reloadKey}`;
 		if (sig !== _prevSig) {
 			_prevSig = sig;
 			page = 1;
@@ -267,61 +267,41 @@
 		columns = [];
 		const accRows = [];
 		const colSet = new Set();
-		/** @type {unknown[]} */
-		const rawBuf = [];
 		const opts = {};
 		const w = stripLeadingKeyword(whereClause, 'WHERE');
 		if (w) opts.where = w;
 		const o = stripLeadingKeyword(orderByClause, 'ORDER BY');
 		if (o) opts.orderBy = o;
 
-		// 100ms 窗口：统一解析 + 刷 UI
-		const flushTimer = setInterval(() => {
-			if (rawBuf.length === 0) return;
-			const batch = rawBuf.splice(0);
-			for (const data of batch) {
-				if (data && typeof data === 'object') {
-					const d = /** @type {Record<string, unknown>} */ (data);
-					if (d.total != null && typeof d.total === 'number') total = d.total;
-					const rowArr = Array.isArray(d.rows) ? d.rows : [];
-					for (const row of rowArr) {
-						accRows.push(row);
-						if (row && typeof row === 'object') {
-							for (const k of Object.keys(row)) colSet.add(k);
-						}
-					}
-				}
-			}
-			streamedRowCount = accRows.length;
-			rows = [...accRows];
-			columns = [...colSet];
-			if (!virtualActive && accRows.length > VIRTUAL_THRESHOLD) {
-				virtualActive = true;
-			}
-		}, 100);
-
 		try {
 			const resp = await listDataStreaming(
 				schemaConn,
 				tableName,
-				(data) => { rawBuf.push(data); },
+				(data) => {
+					if (data && typeof data === 'object') {
+						const d = /** @type {Record<string, unknown>} */ (data);
+						if (d.total != null && typeof d.total === 'number') total = d.total;
+						const rowArr = Array.isArray(d.rows) ? d.rows : [];
+						for (const row of rowArr) {
+							accRows.push(row);
+							if (row && typeof row === 'object') {
+								for (const k of Object.keys(row)) colSet.add(k);
+							}
+						}
+						streamedRowCount = accRows.length;
+						rows = [...accRows];
+						columns = [...colSet];
+						if (!virtualActive && accRows.length > VIRTUAL_THRESHOLD) {
+							virtualActive = true;
+						}
+					}
+				},
 				opts
 			);
 			if (!resp.success) {
 				err(resp.error ?? get(t)('datagrid.toast.stream_failed'));
 			}
-			// 最终刷新
-			rows = accRows;
-			columns = [...colSet];
-			if (accRows.length > VIRTUAL_THRESHOLD && !virtualActive) {
-				virtualActive = true;
-			}
-			if (virtualActive) {
-				colsMeasured = false;
-				colWidths = [];
-			}
 		} finally {
-			clearInterval(flushTimer);
 			streaming = false;
 			streamedRowCount = 0;
 		}

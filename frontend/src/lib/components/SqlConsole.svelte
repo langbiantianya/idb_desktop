@@ -192,7 +192,7 @@
 	$effect(() => {
 		const conn = schemaConn;
 		if (!conn) return;
-		const key = `${conn.driver}|${conn.host}|${conn.port}|${conn.user}|${conn.database}`;
+		const key = `${conn.driver}|${conn.host}|${conn.port}|${conn.user}|${conn.database}|${conn._schema || ''}`;
 		if (key === lastLoadKey) return;
 		lastLoadKey = key;
 		void loadInitialMeta(conn);
@@ -201,11 +201,18 @@
 	/** @param {ConnectionConfig} conn */
 	async function loadInitialMeta(conn) {
 		try {
-			const sResp = await listSchemas(conn);
-			if (sResp.success) schemas = asStringList(sResp.data);
+			// PostgreSQL: 从 connection.database 加载该库的 schema 列表
+			if (conn.driver === 'Postgresql') {
+				const sResp = await listSchemas(conn, { database: conn.database });
+				if (sResp.success) schemas = asStringList(sResp.data);
+			} else {
+				const sResp = await listSchemas(conn);
+				if (sResp.success) schemas = asStringList(sResp.data);
+			}
 		} catch (_) { /* 忽略：完成项只是辅助 */ }
 
-		const cur = conn.database;
+		// 当前 schema：PG 取 _schema，MySQL 取 database
+		const cur = conn.driver === 'Postgresql' ? (conn._schema || '') : conn.database;
 		if (cur && !tablesBySchema[cur]) {
 			try {
 				const tResp = await listTables(conn);
@@ -221,7 +228,10 @@
 	async function tablesIn(schema) {
 		if (tablesBySchema[schema]) return tablesBySchema[schema];
 		try {
-			const r = await listTables({ ...schemaConn, database: schema });
+			const conn = schemaConn.driver === 'Postgresql'
+				? { ...schemaConn, _schema: schema }
+				: { ...schemaConn, database: schema };
+			const r = await listTables(conn);
 			if (!r.success) return [];
 			const list = asTableList(r.data).map((t) => t.name);
 			tablesBySchema = { ...tablesBySchema, [schema]: list };
@@ -236,7 +246,10 @@
 		const key = `${schema}.${table}`;
 		if (columnsByQualifiedTable[key]) return columnsByQualifiedTable[key];
 		try {
-			const r = await listColumns({ ...schemaConn, database: schema }, table);
+			const conn = schemaConn.driver === 'Postgresql'
+				? { ...schemaConn, _schema: schema }
+				: { ...schemaConn, database: schema };
+			const r = await listColumns(conn, table);
 			if (!r.success) return [];
 			const list = asColumnList(r.data).map((c) => c.name);
 			columnsByQualifiedTable = { ...columnsByQualifiedTable, [key]: list };
@@ -282,7 +295,7 @@
 	async function getSuggestions(ctx) {
 		const { prevToken, qualifier } = ctx;
 		const items = /** @type {Suggestion[]} */ ([]);
-		const cur = schemaConn.database || '';
+		const cur = (schemaConn.driver === 'Postgresql' ? (schemaConn._schema || '') : schemaConn.database) || '';
 
 		if (qualifier) {
 			// 已知 schema：列出该 schema 下的表
@@ -466,8 +479,6 @@
 						// SELECT 走流式响应
 						const accRows = [];
 						const colSet = new Set();
-						/** @type {unknown[]} */
-						const rawBuf = [];
 						vsStreaming = true;
 						// 先占位，流式过程中增量更新
 						const idx = collected.length;
@@ -475,11 +486,8 @@
 						results = [...collected];
 						activeResultIdx = idx;
 
-						// 100ms 窗口：统一解析 + 刷 UI
-						const flushTimer = setInterval(() => {
-							if (rawBuf.length === 0) return;
-							const batch = rawBuf.splice(0);
-							for (const data of batch) {
+						try {
+							const resp = await executeSqlStreaming(schemaConn, stmt, (data) => {
 								if (data && typeof data === 'object') {
 									const d = /** @type {Record<string, unknown>} */ (data);
 									const rowArr = Array.isArray(d.rows) ? d.rows : [];
@@ -489,19 +497,13 @@
 											for (const k of Object.keys(row)) colSet.add(k);
 										}
 									}
+									const cols = [...colSet];
+									collected[idx] = { ...collected[idx], rows: [...accRows], columns: cols };
+									results = [...collected];
+									if (!vsActive && accRows.length > VS_THRESHOLD) {
+										vsActive = true;
+									}
 								}
-							}
-							const cols = [...colSet];
-							collected[idx] = { ...collected[idx], rows: [...accRows], columns: cols };
-							results = [...collected];
-							if (!vsActive && accRows.length > VS_THRESHOLD) {
-								vsActive = true;
-							}
-						}, 100);
-
-						try {
-							const resp = await executeSqlStreaming(schemaConn, stmt, (data) => {
-								rawBuf.push(data);
 							});
 							vsStreaming = false;
 							if (!resp.success) {
@@ -514,7 +516,7 @@
 							if (accRows.length > VS_THRESHOLD && !vsActive) vsActive = true;
 							if (vsActive) { vsColsLocked = false; vsColWidths = []; }
 						} finally {
-							clearInterval(flushTimer);
+							vsStreaming = false;
 						}
 					} else {
 						// 非 SELECT 走普通响应
@@ -554,7 +556,7 @@
 		<h2 class="text-sm font-medium" style="color: var(--md-on-surface);">{$t('sql.title')}</h2>
 		<div class="flex items-center gap-3">
 			<div class="text-xs font-mono" style="color: var(--md-on-surface-variant);">
-				{schemaConn.driver}://{schemaConn.host}:{schemaConn.port}/{schemaConn.database || $t('sql.no_db')}
+				{schemaConn.driver}://{schemaConn.host}:{schemaConn.port}/{schemaConn.driver === 'Postgresql' ? (schemaConn._schema || schemaConn.database || $t('sql.no_db')) : (schemaConn.database || $t('sql.no_db'))}
 			</div>
 			<div class="flex items-center gap-1">
 				<button

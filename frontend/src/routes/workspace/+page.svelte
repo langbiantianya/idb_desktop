@@ -18,14 +18,15 @@
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
-	 * @typedef {{ id: string; kind: 'data'; schema: string; table: string; title: string }
-	 *   | { id: string; kind: 'sql'; schema: string; title: string }
+	 * @typedef {{ id: string; database: string; kind: 'data'; schema: string; table: string; title: string }
+	 *   | { id: string; database: string; kind: 'sql'; schema: string; title: string }
 	 *   | { id: string; kind: 'users'; title: string }
-	 *   | { id: string; kind: 'generator'; schema: string; title: string }
+	 *   | { id: string; database: string; kind: 'generator'; schema: string; title: string }
 	 * } Tab
 	 */
 
 	let baseConn = $state(/** @type {ConnectionConfig | null} */ (null));
+	let selectedDatabase = $state('');  // PostgreSQL 当前选中的数据库
 	let selectedSchema = $state('');
 	let selectedTable = $state('');
 
@@ -34,13 +35,15 @@
 
 	let inspectingTable = $state('');
 	let inspectingSchema = $state('');
+	let inspectingDatabase = $state('');
 	let creatingTableIn = $state('');
+	let creatingTableDb = $state('');
 
-	// 表结构改完后，bump 这个 map 里对应 schema:table 的版本号 → DataGrid 的 reloadKey 变化触发重拉。
+	// 表结构改完后，bump 这个 map 里对应 db:schema:table 的版本号 → DataGrid 的 reloadKey 变化触发重拉。
 	let tableReloadVersion = $state(/** @type {Record<string, number>} */ ({}));
 
-	function reloadKeyFor(schema, table) {
-		return tableReloadVersion[`${schema}:${table}`] ?? 0;
+	function reloadKeyFor(database, schema, table) {
+		return tableReloadVersion[`${database}:${schema}:${table}`] ?? 0;
 	}
 
 	/** @type {Sidebar | null} */
@@ -77,7 +80,7 @@
 				goto('/');
 			} else {
 				baseConn = conn;
-				if (!selectedSchema && conn.database) {
+				if (!selectedSchema && conn.database && conn.driver === 'Mysql') {
 					selectedSchema = conn.database;
 				}
 			}
@@ -88,6 +91,7 @@
 	function disconnect() {
 		baseConn = null;
 		activeConnection.set(null);
+		selectedDatabase = '';
 		selectedSchema = '';
 		selectedTable = '';
 		tabs = [];
@@ -95,38 +99,40 @@
 		goto('/');
 	}
 
-	function pickSchema(name) {
+	function pickSchema(database, name) {
+		selectedDatabase = database;
 		selectedSchema = name;
 	}
 
-	function pickTable(schema, table) {
+	/**
+	 * @param {string} database
+	 * @param {string} schema
+	 * @param {string} table
+	 */
+	function pickTable(database, schema, table) {
+		selectedDatabase = database;
 		selectedSchema = schema;
 		selectedTable = table;
-		const id = `data:${schema}:${table}`;
-		const exists = tabs.find((t) => t.id === id);
-		if (!exists) {
-			tabs = [
-				...tabs,
-				{ id, kind: 'data', schema, table, title: `${schema}.${table}` }
-			];
+		const id = baseConn?.driver === 'Mysql' ? `${schema}:${table}` : `${database}:${schema}:${table}`;
+		if (!tabs.find((t) => t.id === id)) {
+			tabs = [...tabs, { id, database, kind: 'data', schema, table, title: `${schema}.${table}` }];
 		}
 		activeTabId = id;
 	}
 
 	function openSqlTab() {
 		if (!selectedSchema) return;
-		const id = `sql:${selectedSchema}`;
-		const exists = tabs.find((t) => t.id === id);
-		if (!exists) {
-			tabs = [...tabs, { id, kind: 'sql', schema: selectedSchema, title: `SQL · ${selectedSchema}` }];
+		const db = baseConn?.driver === 'Mysql' ? '' : selectedDatabase;
+		const id = baseConn?.driver === 'Mysql' ? `sql:${selectedSchema}` : `sql:${db}:${selectedSchema}`;
+		if (!tabs.find((t) => t.id === id)) {
+			tabs = [...tabs, { id, database: db, kind: 'sql', schema: selectedSchema, title: `SQL · ${selectedSchema}` }];
 		}
 		activeTabId = id;
 	}
 
 	function openUsersTab() {
 		const id = 'users';
-		const exists = tabs.find((t) => t.id === id);
-		if (!exists) {
+		if (!tabs.find((t) => t.id === id)) {
 			tabs = [...tabs, { id, kind: 'users', title: get(t)('workspace.users_tab') }];
 		}
 		activeTabId = id;
@@ -134,9 +140,10 @@
 
 	function openGeneratorTab() {
 		if (!selectedSchema) return;
-		const id = `generator:${selectedSchema}`;
+		const db = baseConn?.driver === 'Mysql' ? '' : selectedDatabase;
+		const id = baseConn?.driver === 'Mysql' ? `generator:${selectedSchema}` : `generator:${db}:${selectedSchema}`;
 		if (!tabs.find((t) => t.id === id)) {
-			tabs = [...tabs, { id, kind: 'generator', schema: selectedSchema, title: get(t)('dg.tab_title', { schema: selectedSchema }) }];
+			tabs = [...tabs, { id, database: db, kind: 'generator', schema: selectedSchema, title: get(t)('dg.tab_title', { schema: selectedSchema }) }];
 		}
 		activeTabId = id;
 	}
@@ -154,37 +161,53 @@
 
 	let activeTab = $derived(tabs.find((t) => t.id === activeTabId) ?? null);
 
-	// 用 $derived.by + 内部 Map 做按 schema 的连接缓存，
+	// 用 $derived.by + 内部 Map 做按 (database, schema) 的连接缓存，
 	// 让传给子组件的 schemaConn 引用稳定 —— 否则每次父级 rerender 都会
 	// 触发 DataGrid 内部 $effect 重新拉数据。仅当 baseConn 自身换了才重置。
-	let schemaConnFor = $derived.by(() => {
+	let connFor = $derived.by(() => {
 		const conn = baseConn;
 		const cache = new Map();
-		return (schema) => {
-			if (!conn) return null;
-			if (!cache.has(schema)) cache.set(schema, { ...conn, database: schema });
-			return cache.get(schema);
+		return (db, schema) => {
+			if (!conn || !schema) return null;
+			const key = `${db}::${schema}`;
+			if (!cache.has(key)) {
+				cache.set(key, conn.driver === 'Mysql'
+					? { ...conn, database: schema }              // MySQL: database === schema
+					: { ...conn, database: db, _schema: schema }); // PG: 独立 db + schema
+			}
+			return cache.get(key);
 		};
 	});
 
-	function onCreateTable(schema) {
+	/** 当前 sidebar 选中的 database/schema 对应的连接（用于顶部按钮新建的 tab） */
+	function connForActive() {
+		if (!baseConn) return null;
+		if (baseConn.driver === 'Mysql') return connFor('', selectedSchema);
+		return connFor(selectedDatabase, selectedSchema);
+	}
+
+	function onCreateTable(database, schema) {
+		creatingTableDb = database;
 		creatingTableIn = schema;
 	}
 
-	function onInspectTable(schema, table) {
+	function onInspectTable(database, schema, table) {
+		inspectingDatabase = database;
 		inspectingSchema = schema;
 		inspectingTable = table;
 	}
 
 	async function onTableCreated(name) {
 		const schema = creatingTableIn;
+		const db = creatingTableDb;
 		creatingTableIn = '';
+		creatingTableDb = '';
 		if (!schema) return;
-		await sidebarRef?.refreshTablesIn(schema);
+		await sidebarRef?.refreshTablesIn(db, schema);
 	}
 
-	function onTableDeleted(schema, table) {
-		const id = `data:${schema}:${table}`;
+	function onTableDeleted(database, schema, table) {
+		const id = baseConn?.driver === 'Mysql' ? `data:${schema}:${table}` : `data:${database}:${schema}:${table}`;
 		const idx = tabs.findIndex((t) => t.id === id);
 		if (idx >= 0) {
 			const next = tabs.filter((t) => t.id !== id);
@@ -198,12 +221,12 @@
 		}
 	}
 
-	async function onTableStructureSaved(schema, table) {
+	async function onTableStructureSaved(database, schema, table) {
 		// 触发 DataGrid 重拉
-		const k = `${schema}:${table}`;
+		const k = `${database}:${schema}:${table}`;
 		tableReloadVersion = { ...tableReloadVersion, [k]: (tableReloadVersion[k] ?? 0) + 1 };
 		// 让侧栏列子节点（已展开的）重新拉
-		await sidebarRef?.refreshColumnsOf(schema, table);
+		await sidebarRef?.refreshColumnsOf(database, schema, table);
 	}
 </script>
 
@@ -229,6 +252,10 @@
 			<span class="font-mono text-xs" style="color: var(--md-on-surface-variant);">
 				{baseConn.driver}://{baseConn.user}@{baseConn.host}:{baseConn.port}
 			</span>
+			{#if baseConn.driver === 'Postgresql' && selectedDatabase}
+				<span class="text-xs" style="color: var(--md-on-surface-variant);">/</span>
+				<span class="font-mono text-xs" style="color: var(--md-primary);">{selectedDatabase}</span>
+			{/if}
 			{#if selectedSchema}
 				<span class="text-xs" style="color: var(--md-on-surface-variant);">/</span>
 				<span class="font-mono text-xs" style="color: var(--md-primary);">{selectedSchema}</span>
@@ -263,12 +290,18 @@
 			{baseConn}
 			{selectedSchema}
 			{selectedTable}
+			onSelectDatabase={(db) => {
+				if (selectedDatabase === db) return;
+				selectedDatabase = db;
+				// 不再清空 tabs，每个 tab 独立记录自己的 db+schema
+			}}
 			onSelectSchema={pickSchema}
 			onSelectTable={pickTable}
 			{onCreateTable}
 			{onInspectTable}
 			{onTableDeleted}
-			onOpenGenerator={(schema) => {
+			onOpenGenerator={(db, schema) => {
+				selectedDatabase = db;
 				selectedSchema = schema;
 				openGeneratorTab();
 			}}
@@ -351,19 +384,19 @@
 						style:display={activeTabId === tab.id ? 'flex' : 'none'}
 					>
 						{#if tab.kind === 'data'}
-							{@const sc = schemaConnFor(tab.schema)}
+							{@const sc = connFor(tab.database, tab.schema)}
 							{#if sc}
-								<DataGrid schemaConn={sc} schemaName={tab.schema} tableName={tab.table} reloadKey={reloadKeyFor(tab.schema, tab.table)} />
+								<DataGrid schemaConn={sc} schemaName={tab.schema} tableName={tab.table} reloadKey={reloadKeyFor(tab.database, tab.schema, tab.table)} />
 							{/if}
 						{:else if tab.kind === 'sql'}
-							{@const sc = schemaConnFor(tab.schema)}
+							{@const sc = connFor(tab.database, tab.schema)}
 							{#if sc}
 								<SqlConsole schemaConn={sc} />
 							{/if}
 						{:else if tab.kind === 'users'}
 							<UserPanel {baseConn} />
 						{:else if tab.kind === 'generator'}
-							{@const sc = schemaConnFor(tab.schema)}
+							{@const sc = connFor(tab.database, tab.schema)}
 							{#if sc}
 								<DataGeneratorPanel schemaConn={sc} />
 							{/if}
@@ -391,21 +424,25 @@
 <!-- 修改表结构弹窗（draft + 保存批量提交） -->
 <TablePanel
 	open={!!inspectingTable}
-	schemaConn={schemaConnFor(inspectingSchema)}
+	schemaConn={connFor(inspectingDatabase, inspectingSchema)}
 	tableName={inspectingTable}
 	onClose={() => {
 		inspectingTable = '';
 		inspectingSchema = '';
+		inspectingDatabase = '';
 	}}
-	onSaved={onTableStructureSaved}
+	onSaved={(table) => onTableStructureSaved(inspectingDatabase, inspectingSchema, table)}
 />
 
 <!-- 新建表 -->
 <TableEditor
 	open={!!creatingTableIn}
-	schemaConn={schemaConnFor(creatingTableIn)}
+	schemaConn={connFor(creatingTableDb, creatingTableIn)}
 	schemaName={creatingTableIn}
 	onCreated={onTableCreated}
-	onClose={() => (creatingTableIn = '')}
+	onClose={() => {
+		creatingTableIn = '';
+		creatingTableDb = '';
+	}}
 />
 {/if}

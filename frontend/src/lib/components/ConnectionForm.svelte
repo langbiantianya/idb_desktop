@@ -268,8 +268,20 @@
 					<input class="md-input" type="password" bind:value={conn.password} autocomplete="off" />
 				</label>
 				<label class="col-span-2 flex flex-col gap-1 text-sm">
-					<span style="color: var(--md-on-surface-variant);">{$t('conn.database')}</span>
-					<input class="md-input" type="text" bind:value={conn.database} />
+					<span style="color: var(--md-on-surface-variant);">
+						{conn.driver === 'Postgresql' ? $t('conn.pg_database') : $t('conn.database')}
+					</span>
+					<input
+						class="md-input"
+						type="text"
+						bind:value={conn.database}
+						placeholder={conn.driver === 'Postgresql' ? $t('conn.pg_database_placeholder') : ''}
+					/>
+					{#if conn.driver === 'Postgresql'}
+						<span class="text-xs" style="color: var(--md-on-surface-variant);">
+							{$t('conn.pg_database_hint')}
+						</span>
+					{/if}
 				</label>
 
 				<label class="col-span-2 flex items-center gap-2 text-sm">

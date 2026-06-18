@@ -162,7 +162,7 @@
 		>?</button>
 		<div class="flex min-w-0 flex-wrap items-center gap-3">
 			<div class="shrink-0 font-mono text-xs" style="color: var(--md-on-surface-variant);">
-				{schemaConn.driver}://{schemaConn.host}:{schemaConn.port}/{schemaConn.database || '—'}
+				{schemaConn.driver}://{schemaConn.host}:{schemaConn.port}/{schemaConn.driver === 'Postgresql' ? (schemaConn._schema || schemaConn.database || '—') : (schemaConn.database || '—')}
 			</div>
 			<div class="flex items-center gap-1.5">
 				<span class="text-xs" style="color: var(--md-on-surface-variant);">{$t('dg.lua_version')}</span>

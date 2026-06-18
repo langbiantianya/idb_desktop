@@ -19,6 +19,7 @@
 	import ContextMenu from './ContextMenu.svelte';
 	import MdButton from './MdButton.svelte';
 	import Combobox from './Combobox.svelte';
+	import TreeTableList from './TreeTableList.svelte';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
@@ -27,19 +28,22 @@
 	 * @property {ConnectionConfig} baseConn
 	 * @property {string} selectedSchema
 	 * @property {string} selectedTable
-	 * @property {(schema: string) => void} onSelectSchema
-	 * @property {(schema: string, table: string) => void} onSelectTable
-	 * @property {(schema: string) => void} [onCreateTable]
-	 * @property {(schema: string, table: string) => void} [onInspectTable]
-	 * @property {(schema: string, table: string) => void} [onTableDeleted]
-	 * @property {(schema: string) => void} [onOpenGenerator]
+	 * @property {(db: string) => void} onSelectDatabase
+	 * @property {(database: string, schema: string) => void} onSelectSchema — MySQL 时 database === schema
+	 * @property {(database: string, schema: string, table: string) => void} onSelectTable
+	 * @property {(database: string, schema: string) => void} [onCreateTable]
+	 * @property {(database: string, schema: string, table: string) => void} [onInspectTable]
+	 * @property {(database: string, schema: string, table: string) => void} [onTableDeleted]
+	 * @property {(database: string, schema: string) => void} [onOpenGenerator]
 	 */
 
 	/** @type {Props} */
 	let {
 		baseConn,
+		selectedDatabase,
 		selectedSchema,
 		selectedTable,
+		onSelectDatabase,
 		onSelectSchema,
 		onSelectTable,
 		onCreateTable,
@@ -48,10 +52,22 @@
 		onOpenGenerator
 	} = $props();
 
-	let schemas = $state(/** @type {string[]} */ ([]));
+	let isPg = $derived(baseConn.driver === 'Postgresql');
+	let isMysql = $derived(baseConn.driver === 'Mysql');
 	let pending = $state(false);
 
-	/** schema -> tables（懒加载） @type {Record<string, TableEntry[]>} */
+	// 顶层节点列表
+	/** MySQL: databases（= schemas）；PG: databases */
+	let databases = $state(/** @type {string[]} */ ([]));
+
+	// PG: db → schema[]
+	let schemasByDb = $state(/** @type {Record<string, string[]>} */ ({}));
+	/** db → 是否展开 @type {Record<string, boolean>} */
+	let dbExpanded = $state({});
+	/** db → 是否正在加载 schema 列表 @type {Record<string, boolean>} */
+	let dbLoading = $state({});
+
+	// schema -> tables（懒加载） @type {Record<string, TableEntry[]>} */
 	let tablesBySchema = $state({});
 	/** schema -> 是否展开 @type {Record<string, boolean>} */
 	let expanded = $state({});
@@ -70,8 +86,6 @@
 	let newCharset = $state('utf8mb4');
 	let newCollate = $state('utf8mb4_unicode_ci');
 	let createPending = $state(false);
-
-	let isMysql = $derived(baseConn.driver === 'Mysql');
 
 	// MySQL 常见 charset → collation 映射
 	const CHARSET_OPTIONS = ['utf8mb4', 'utf8', 'latin1', 'ascii', 'utf16', 'binary'];
@@ -95,11 +109,64 @@
 	let confirming = $state(/** @type {string | null} */ (null));
 	let deletePending = $state(false);
 
-	let confirmingTable = $state(/** @type {{ schema: string; table: string } | null} */ (null));
+	let confirmingTable = $state(/** @type {{ database: string; schema: string; table: string } | null} */ (null));
 	let deleteTablePending = $state(false);
 
+	/** PG 当前活跃数据库（用于连接构造） */
+	let activeDb = $derived.by(() => {
+		if (!isPg) return baseConn.database;
+		// 找到第一个已展开的数据库
+		for (const [db, exp] of Object.entries(dbExpanded)) {
+			if (exp) return db;
+		}
+		return baseConn.database || '';
+	});
+
+	/** PG 连接用的数据库名 */
+	let pgDb = $derived(activeDb || 'postgres');
+
 	/**
-	 * @typedef {{ x: number; y: number; kind: 'schema'; schema: string }
+	 * 当前节点对应的 database（用于回调）。MySQL 时 database === schema。
+	 * @param {string} schema
+	 * @returns {string}
+	 */
+	function dbFor(schema) {
+		return isPg ? activeDb : schema;
+	}
+
+	/**
+	 * 是否高亮：MySQL 只看 schema；PG 要求 db + schema 同时匹配
+	 * @param {string} db
+	 * @param {string} schema
+	 * @returns {boolean}
+	 */
+	function isSchemaSelected(db, schema) {
+		if (isPg) return selectedDatabase === db && selectedSchema === schema;
+		return selectedSchema === schema;
+	}
+
+	// 复合 key：PG 用 db::schema 避免同名 schema 跨库冲突，MySQL 保持 schema
+	/**
+	 * @param {string} db
+	 * @param {string} schema
+	 * @returns {string}
+	 */
+	function sk(db, schema) {
+		return isPg ? `${db}::${schema}` : schema;
+	}
+	/**
+	 * @param {string} db
+	 * @param {string} schema
+	 * @param {string} table
+	 * @returns {string}
+	 */
+	function tk(db, schema, table) {
+		return isPg ? `${db}::${schema}.${table}` : `${schema}.${table}`;
+	}
+
+	/**
+	 * @typedef {{ x: number; y: number; kind: 'database'; database: string }
+	 *   | { x: number; y: number; kind: 'schema'; schema: string }
 	 *   | { x: number; y: number; kind: 'table'; schema: string; table: string }
 	 *   | { x: number; y: number; kind: 'column'; schema: string; table: string; column: string }
 	 * } MenuState
@@ -108,8 +175,8 @@
 
 	let filter = $state('');
 
-	// 宽度 / 折叠：折叠时只显示一个展开按钮（约 2.25rem 宽）；展开时默认 18rem，可拖拽 [4rem, 32rem]。
-	const MIN_WIDTH = 64; // 4rem，约 2-3 个汉字 / 4-5 个等宽字符
+	// 宽度 / 折叠
+	const MIN_WIDTH = 64;
 	const MAX_WIDTH = 512;
 	const DEFAULT_WIDTH = 288;
 	const COLLAPSED_WIDTH = 36;
@@ -150,40 +217,102 @@
 	$effect(() => {
 		// 选中切换到一个新 schema 时自动展开它；但用户手动折叠后不再强行展回（用 untrack 切断对 expanded 的依赖）
 		if (selectedSchema) {
-			const isExpanded = untrack(() => expanded[selectedSchema]);
-			if (!isExpanded) toggle(selectedSchema, true);
+			// PG: 遍历所有展开的 db，找包含此 schema 的那个；MySQL: 直接用 schema 名
+			let isExpanded = false;
+			untrack(() => {
+				if (isPg) {
+					for (const db of Object.keys(dbExpanded)) {
+						if (dbExpanded[db] && expanded[sk(db, selectedSchema)]) {
+							isExpanded = true;
+							break;
+						}
+					}
+				} else {
+					isExpanded = !!expanded[selectedSchema];
+				}
+			});
+			if (!isExpanded) {
+				if (isPg) {
+					// PG: 找到当前展开且包含该 schema 的 db 并展开
+					for (const db of Object.keys(dbExpanded)) {
+						if (dbExpanded[db] && (schemasByDb[db] ?? []).includes(selectedSchema)) {
+							toggle(db, selectedSchema, true);
+							break;
+						}
+					}
+				} else {
+					toggle('', selectedSchema, true);
+				}
+			}
 		}
 	});
 
 	async function refreshSchemas() {
 		pending = true;
 		try {
-			const resp = await listSchemas(baseConn);
+			// PG: 连接到默认库拉取数据库列表；MySQL: 直接拉取 database/schema 列表
+			const conn = isPg ? { ...baseConn, database: baseConn.database || 'postgres' } : baseConn;
+			const resp = await listSchemas(conn);
 			if (!resp.success) {
 				err(resp.error ?? get(t)('sidebar.toast.schema_failed'));
-				schemas = [];
+				databases = [];
 				return;
 			}
-			schemas = asStringList(resp.data);
+			databases = asStringList(resp.data);
 		} finally {
 			pending = false;
 		}
 	}
 
-	async function loadTables(schema) {
-		loading = { ...loading, [schema]: true };
+	/** 展开数据库节点：PG 加载 schema 列表（支持多库同时展开，不清空其他库状态），MySQL 直接加载表 */
+	async function toggleDb(db, force) {
+		const target = force === undefined ? !dbExpanded[db] : force;
+		if (target) {
+			dbExpanded = { ...dbExpanded, [db]: true };
+			// 通知 workspace 更新侧栏高亮用的 selectedDatabase
+			onSelectDatabase?.(db);
+		} else {
+			dbExpanded = { ...dbExpanded, [db]: false };
+			return;
+		}
+		if (isPg) {
+			// PG: 懒加载该库的 schema 列表（不清空其他已展开库的状态）
+			if (schemasByDb[db]) return;
+			dbLoading = { ...dbLoading, [db]: true };
+			try {
+				const resp = await listSchemas({ ...baseConn, database: db }, { database: db });
+				if (!resp.success) {
+					err(resp.error ?? get(t)('sidebar.toast.schema_failed'));
+					schemasByDb = { ...schemasByDb, [db]: [] };
+					return;
+				}
+				schemasByDb = { ...schemasByDb, [db]: asStringList(resp.data) };
+			} finally {
+				dbLoading = { ...dbLoading, [db]: false };
+			}
+		} else {
+			// MySQL: database 即 schema，直接加载表
+			if (!tablesBySchema[db]) await loadTables(db, db);
+		}
+	}
+
+	async function loadTables(db, schema) {
+		const key = sk(db, schema);
+		loading = { ...loading, [key]: true };
 		try {
-			const resp = await listTables({ ...baseConn, database: schema });
+			const conn = isPg ? { ...baseConn, database: db, _schema: schema } : { ...baseConn, database: schema };
+			const resp = await listTables(conn);
 			if (!resp.success) {
 				err(resp.error ?? get(t)('sidebar.toast.tables_failed', { schema }));
-				tablesBySchema = { ...tablesBySchema, [schema]: [] };
+				tablesBySchema = { ...tablesBySchema, [key]: [] };
 				return;
 			}
-			tablesBySchema = { ...tablesBySchema, [schema]: asTableList(resp.data) };
-			// 表列表变化时，丢弃该 schema 下所有表的列缓存与展开态，让用户重新展开拉新数据
-			const prefix = `${schema}.`;
+			tablesBySchema = { ...tablesBySchema, [key]: asTableList(resp.data) };
+			// 表列表变化时，丢弃该 schema 下所有表的列缓存与展开态
+			const prefix = isPg ? `${db}::${schema}.` : `${schema}.`;
 			const nextCols = { ...columnsByTable };
 			const nextTE = { ...tableExpanded };
+			const nextColsLoading = { ...colsLoading };
 			let dirty = false;
 			for (const k of Object.keys(nextCols)) {
 				if (k.startsWith(prefix)) {
@@ -197,27 +326,36 @@
 					dirty = true;
 				}
 			}
+			for (const k of Object.keys(nextColsLoading)) {
+				if (k.startsWith(prefix)) {
+					delete nextColsLoading[k];
+					dirty = true;
+				}
+			}
 			if (dirty) {
 				columnsByTable = nextCols;
 				tableExpanded = nextTE;
+				colsLoading = nextColsLoading;
 			}
 		} finally {
-			loading = { ...loading, [schema]: false };
+			loading = { ...loading, [key]: false };
 		}
 	}
 
-	async function toggle(schema, force) {
-		const target = force === undefined ? !expanded[schema] : force;
-		expanded = { ...expanded, [schema]: target };
-		if (target && !tablesBySchema[schema]) await loadTables(schema);
+	async function toggle(db, schema, force) {
+		const key = sk(db, schema);
+		const target = force === undefined ? !expanded[key] : force;
+		expanded = { ...expanded, [key]: target };
+		if (target && !tablesBySchema[key]) await loadTables(db, schema);
 	}
 
-	/** @param {string} schema @param {string} table */
-	async function loadColumns(schema, table) {
-		const key = `${schema}.${table}`;
+	/** @param {string} db @param {string} schema @param {string} table */
+	async function loadColumns(db, schema, table) {
+		const key = tk(db, schema, table);
 		colsLoading = { ...colsLoading, [key]: true };
 		try {
-			const resp = await listColumns({ ...baseConn, database: schema }, table);
+			const conn = isPg ? { ...baseConn, database: db, _schema: schema } : { ...baseConn, database: schema };
+			const resp = await listColumns(conn, table);
 			if (!resp.success) {
 				err(resp.error ?? get(t)('sidebar.toast.columns_failed', { schema, table }));
 				columnsByTable = { ...columnsByTable, [key]: [] };
@@ -229,12 +367,12 @@
 		}
 	}
 
-	/** @param {string} schema @param {string} table @param {boolean} [force] */
-	async function toggleTable(schema, table, force) {
-		const key = `${schema}.${table}`;
+	/** @param {string} db @param {string} schema @param {string} table @param {boolean} [force] */
+	async function toggleTable(db, schema, table, force) {
+		const key = tk(db, schema, table);
 		const target = force === undefined ? !tableExpanded[key] : force;
 		tableExpanded = { ...tableExpanded, [key]: target };
-		if (target && !columnsByTable[key]) await loadColumns(schema, table);
+		if (target && !columnsByTable[key]) await loadColumns(db, schema, table);
 	}
 
 	async function doCreate() {
@@ -253,7 +391,14 @@
 			newName = '';
 			newCharset = 'utf8mb4';
 			newCollate = 'utf8mb4_unicode_ci';
-			await refreshSchemas();
+			if (isPg && activeDb) {
+				// 刷新当前展开数据库的 schema 列表
+				delete schemasByDb[activeDb];
+				schemasByDb = { ...schemasByDb };
+				await toggleDb(activeDb, true);
+			} else {
+				await refreshSchemas();
+			}
 		} finally {
 			createPending = false;
 		}
@@ -276,12 +421,30 @@
 			}
 			ok(get(t)('sidebar.toast.deleted', { name }));
 			confirming = null;
-			if (selectedSchema === name) onSelectSchema('');
-			delete tablesBySchema[name];
-			delete expanded[name];
+			if (selectedSchema === name) onSelectSchema(isPg ? activeDb : name, '');
+			// 清除该 schema 的缓存（MySQL 时按 schema 自身；PG 时清空所有相关 db 的缓存）
+			if (isPg) {
+				for (const db of Object.keys(dbExpanded)) {
+					const key = sk(db, name);
+					delete tablesBySchema[key];
+					delete expanded[key];
+					delete loading[key];
+				}
+			} else {
+				delete tablesBySchema[name];
+				delete expanded[name];
+				delete loading[name];
+			}
 			tablesBySchema = { ...tablesBySchema };
 			expanded = { ...expanded };
-			await refreshSchemas();
+			loading = { ...loading };
+			if (isPg && activeDb) {
+				delete schemasByDb[activeDb];
+				schemasByDb = { ...schemasByDb };
+				await toggleDb(activeDb, true);
+			} else {
+				await refreshSchemas();
+			}
 		} finally {
 			deletePending = false;
 		}
@@ -289,7 +452,7 @@
 
 	async function doDeleteTable() {
 		if (!confirmingTable) return;
-		const { schema, table } = confirmingTable;
+		const { database, schema, table } = confirmingTable;
 		if (isReadOnlySchema(baseConn, schema)) {
 			err(get(t)('sidebar.toast.mysql_table_readonly', { schema }));
 			confirmingTable = null;
@@ -297,40 +460,47 @@
 		}
 		deleteTablePending = true;
 		try {
-			const resp = await deleteTable({ ...baseConn, database: schema }, table);
+			const conn = isPg ? { ...baseConn, database, _schema: schema } : { ...baseConn, database: schema };
+			const resp = await deleteTable(conn, table);
 			if (!resp.success) {
 				err(resp.error ?? get(t)('sidebar.toast.delete_table_failed'));
 				return;
 			}
 			ok(get(t)('sidebar.toast.table_deleted', { schema, table }));
 			confirmingTable = null;
-			onTableDeleted?.(schema, table);
-			await loadTables(schema);
+			onTableDeleted?.(database, schema, table);
+			await loadTables(database, schema);
 		} finally {
 			deleteTablePending = false;
 		}
 	}
 
-	export async function refreshTablesIn(schema) {
-		await loadTables(schema);
+	export async function refreshTablesIn(db, schema) {
+		await loadTables(db, schema);
 	}
 
 	/**
 	 * 强制刷新某张表的列子节点（仅当该子节点已经展开 / 已缓存时；否则跳过）。
-	 * @param {string} schema @param {string} table
+	 * @param {string} db
+	 * @param {string} schema
+	 * @param {string} table
 	 */
-	export async function refreshColumnsOf(schema, table) {
-		const key = `${schema}.${table}`;
-		// 不论是否已展开，都丢弃缓存；下次展开时会重新拉
+	export async function refreshColumnsOf(db, schema, table) {
+		const key = tk(db, schema, table);
 		if (columnsByTable[key]) {
 			const next = { ...columnsByTable };
 			delete next[key];
 			columnsByTable = next;
 		}
-		// 已展开则立即重拉
 		if (tableExpanded[key]) {
-			await loadColumns(schema, table);
+			await loadColumns(db, schema, table);
 		}
+	}
+
+	// ---- 菜单 ----
+	function openDatabaseMenu(e, database) {
+		e.preventDefault();
+		menu = { x: e.clientX, y: e.clientY, kind: 'database', database };
 	}
 
 	function openSchemaMenu(e, schema) {
@@ -343,34 +513,52 @@
 		menu = { x: e.clientX, y: e.clientY, kind: 'table', schema, table };
 	}
 
+	function openColumnMenu(e, schema, table, column) {
+		e.preventDefault();
+		e.stopPropagation();
+		menu = { x: e.clientX, y: e.clientY, kind: 'column', schema, table, column };
+	}
+
 	function closeMenu() {
 		menu = null;
 	}
 
 	async function menuRefreshSchema(schema) {
 		closeMenu();
-		expanded = { ...expanded, [schema]: true };
-		await loadTables(schema);
+		const db = dbFor(schema);
+		const key = sk(db, schema);
+		expanded = { ...expanded, [key]: true };
+		await loadTables(db, schema);
+	}
+
+	async function menuRefreshDatabase(db) {
+		closeMenu();
+		// 强制重载：清除缓存后重新展开
+		if (isPg) {
+			delete schemasByDb[db];
+			schemasByDb = { ...schemasByDb };
+		}
+		await toggleDb(db, true);
 	}
 
 	function menuInspectTable(schema, table) {
 		closeMenu();
-		onInspectTable?.(schema, table);
+		onInspectTable?.(dbFor(schema), schema, table);
 	}
 
 	function menuOpenTable(schema, table) {
 		closeMenu();
-		onSelectTable(schema, table);
+		onSelectTable(dbFor(schema), schema, table);
 	}
 
 	function menuOpenGenerator(schema) {
 		closeMenu();
-		onOpenGenerator?.(schema);
+		onOpenGenerator?.(dbFor(schema), schema);
 	}
 
 	function menuCreateTable(schema) {
 		closeMenu();
-		onCreateTable?.(schema);
+		onCreateTable?.(dbFor(schema), schema);
 	}
 
 	function menuDeleteSchema(schema) {
@@ -380,7 +568,7 @@
 
 	function menuDeleteTable(schema, table) {
 		closeMenu();
-		confirmingTable = { schema, table };
+		confirmingTable = { database: dbFor(schema), schema, table };
 	}
 
 	function quoteIdent(s) {
@@ -421,7 +609,7 @@
 	async function menuCopyDdl(schema, table) {
 		closeMenu();
 		try {
-			const conn = { ...baseConn, database: schema };
+			const conn = isPg ? { ...baseConn, database: pgDb, _schema: schema } : { ...baseConn, database: schema };
 			const resp = await getTableDdl(conn, table);
 			if (resp.success && resp.data) {
 				await navigator.clipboard.writeText(String(resp.data));
@@ -434,12 +622,6 @@
 		}
 	}
 
-	function openColumnMenu(e, schema, table, column) {
-		e.preventDefault();
-		e.stopPropagation();
-		menu = { x: e.clientX, y: e.clientY, kind: 'column', schema, table, column };
-	}
-
 	function menuCopyColumnRef(schema, table, column) {
 		closeMenu();
 		void copyText(`${quoteIdent(schema)}.${quoteIdent(table)}.${quoteIdent(column)}`);
@@ -450,19 +632,18 @@
 		void copyText(quoteIdent(column));
 	}
 
-	let filteredSchemas = $derived(
-		filter ? schemas.filter((s) => s.toLowerCase().includes(filter.toLowerCase())) : schemas
+	// ---- 派生：过滤后的列表 ----
+	let filteredDatabases = $derived(
+		filter ? databases.filter((s) => s.toLowerCase().includes(filter.toLowerCase())) : databases
 	);
-
-	function tablesIn(schema) {
-		const all = tablesBySchema[schema] ?? [];
-		if (!filter) return all;
-		const f = filter.toLowerCase();
-		return all.filter((t) => t.name.toLowerCase().includes(f));
-	}
 
 	let menuItems = $derived.by(() => {
 		if (!menu) return [];
+		if (menu.kind === 'database') {
+			return [
+				{ label: $t('sidebar.refresh'), icon: '↻', onClick: () => menuRefreshDatabase(menu.database) }
+			];
+		}
 		if (menu.kind === 'schema') {
 			const ro = isReadOnlySchema(baseConn, menu.schema);
 			const items = [
@@ -479,7 +660,7 @@
 				icon: '⧉',
 				onClick: () => menuCopySchemaRef(menu.schema)
 			});
-			if (!ro) {
+			if (!ro && isMysql) {
 				items.push(null);
 				items.push({
 					label: $t('sidebar.delete_schema'),
@@ -569,7 +750,7 @@
 			</MdButton>
 			<span
 				class="mt-1 text-[10px] tracking-widest"
-				style="writing-mode: vertical-rl; color: var(--md-on-surface-variant);">DATABASE</span
+				style="writing-mode: vertical-rl; color: var(--md-on-surface-variant);">{isPg ? 'DATABASE' : 'DATABASE'}</span
 			>
 		</div>
 	{:else}
@@ -601,16 +782,18 @@
 				>
 					↻
 				</MdButton>
-				<MdButton
-					variant="icon"
-					title={$t('sidebar.new_schema')}
-					onclick={() => {
-						newName = '';
-						creating = true;
-					}}
-				>
-					＋
-				</MdButton>
+				{#if isMysql}
+					<MdButton
+						variant="icon"
+						title={$t('sidebar.new_schema')}
+						onclick={() => {
+							newName = '';
+							creating = true;
+						}}
+					>
+						＋
+					</MdButton>
+				{/if}
 			</div>
 		</div>
 
@@ -635,67 +818,46 @@
 			</span>
 		</div>
 
-		<!-- Schema tree -->
+		<!-- Tree -->
 		<div class="flex-1 overflow-auto px-1 pb-3">
-			{#if filteredSchemas.length === 0 && !pending}
+			{#if filteredDatabases.length === 0 && !pending}
 				<p class="px-3 py-4 text-center text-xs" style="color: var(--md-on-surface-variant);">
 					{filter ? $t('sidebar.no_match') : $t('sidebar.no_visible_schema')}
 				</p>
 			{:else}
 				<ul class="flex flex-col gap-px">
-					{#each filteredSchemas as s (s)}
+					{#each filteredDatabases as db (db)}
 						<li>
-							<!-- schema row -->
+							<!-- database row -->
 							<div
 								role="button"
 								tabindex="0"
 								class="group flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm transition"
-								style:background={selectedSchema === s
-									? 'var(--md-secondary-container)'
-									: 'transparent'}
-								style:color={selectedSchema === s
-									? 'var(--md-on-secondary-container)'
-									: 'var(--md-on-surface)'}
 								onmouseenter={(e) =>
-									selectedSchema !== s &&
 									(e.currentTarget.style.background =
 										'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
-								onmouseleave={(e) =>
-									selectedSchema !== s && (e.currentTarget.style.background = 'transparent')}
-								onclick={() => {
-									// 已经选中再次点击 → 折叠 / 展开切换；切换到新 schema 默认展开
-									if (selectedSchema === s) {
-										toggle(s);
-									} else {
-										onSelectSchema(s);
-										toggle(s, true);
-									}
-								}}
+								onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
+								onclick={() => toggleDb(db)}
 								onkeydown={(e) => {
 									if (e.key === 'Enter' || e.key === ' ') {
 										e.preventDefault();
-										if (selectedSchema === s) {
-											toggle(s);
-										} else {
-											onSelectSchema(s);
-											toggle(s, true);
-										}
+										toggleDb(db);
 									}
 								}}
-								oncontextmenu={(e) => openSchemaMenu(e, s)}
+								oncontextmenu={(e) => openDatabaseMenu(e, db)}
 							>
 								<span
 									class="inline-block w-3 text-center text-[10px] transition-transform"
-									style:transform={expanded[s] ? 'rotate(90deg)' : 'rotate(0deg)'}
+									style:transform={dbExpanded[db] ? 'rotate(90deg)' : 'rotate(0deg)'}
 									onclick={(e) => {
 										e.stopPropagation();
-										toggle(s);
+										toggleDb(db);
 									}}
 									onkeydown={(e) => {
 										if (e.key === 'Enter' || e.key === ' ') {
 											e.preventDefault();
 											e.stopPropagation();
-											toggle(s);
+											toggleDb(db);
 										}
 									}}
 									role="button"
@@ -704,210 +866,177 @@
 									▶
 								</span>
 								<span class="text-xs" style="color: var(--md-primary);">DB</span>
-								<span class="flex-1 truncate font-mono text-xs">{s}</span>
-								{#if isReadOnlySchema(baseConn, s)}
-									<span class="md-chip" title={$t('sidebar.ro_readonly')}>RO</span>
-								{:else}
-									<MdButton
-										variant="icon"
-										class="opacity-0 group-hover:opacity-100"
-										style="width: 1.25rem; height: 1.25rem;"
-										title={$t('sidebar.new_table')}
-										onclick={(e) => {
-											e.stopPropagation();
-											onCreateTable?.(s);
-										}}
-									>
-										<span style="color: var(--md-primary); font-size: 0.75rem;">＋</span>
-									</MdButton>
-									<MdButton
-										variant="icon"
-										class="opacity-0 group-hover:opacity-100"
-										style="width: 1.25rem; height: 1.25rem;"
-										title={$t('common.delete')}
-										onclick={(e) => {
-											e.stopPropagation();
-											confirming = s;
-										}}
-									>
-										<span style="color: var(--md-error); font-size: 0.75rem;">✕</span>
-									</MdButton>
-								{/if}
+								<span class="flex-1 truncate font-mono text-xs">{db}</span>
+								<MdButton
+									variant="icon"
+									class="opacity-0 group-hover:opacity-100"
+									style="width: 1.25rem; height: 1.25rem;"
+									title={$t('sidebar.refresh')}
+									onclick={(e) => {
+										e.stopPropagation();
+										void menuRefreshDatabase(db);
+									}}
+								>
+									<span style="color: var(--md-on-surface-variant); font-size: 0.75rem;">↻</span>
+								</MdButton>
 							</div>
 
-							<!-- table children -->
-							{#if expanded[s]}
-								<ul
-									class="ml-6 flex flex-col gap-px border-l"
-									style="border-color: var(--md-outline-variant);"
-								>
-									{#if loading[s]}
-										<li class="px-3 py-1 text-xs" style="color: var(--md-on-surface-variant);">
-											{$t('common.loading')}
-										</li>
-									{:else if tablesIn(s).length === 0}
-										<li class="px-3 py-1 text-xs" style="color: var(--md-on-surface-variant);">
-											{filter && tablesBySchema[s]?.length
-												? $t('sidebar.no_match')
-												: $t('sidebar.empty_schema')}
-										</li>
-									{:else}
-										{#each tablesIn(s) as tbl (tbl.name)}
-											{@const tk = `${s}.${tbl.name}`}
+							<!-- database children -->
+							{#if dbExpanded[db]}
+								{#if isPg}
+									<!-- PG: Database → Schema → Table → Column -->
+									<ul
+										class="ml-6 flex flex-col gap-px border-l"
+										style="border-color: var(--md-outline-variant);"
+									>
+										{#if dbLoading[db]}
+											<li class="px-3 py-1 text-xs" style="color: var(--md-on-surface-variant);">
+												{$t('common.loading')}
+											</li>
+										{:else if (schemasByDb[db] ?? []).length === 0}
+											<li class="px-3 py-1 text-xs" style="color: var(--md-on-surface-variant);">
+												{$t('sidebar.empty_schema')}
+											</li>
+										{:else}
+											{#each (filter
+												? (schemasByDb[db] ?? []).filter((s) => s.toLowerCase().includes(filter.toLowerCase()))
+												: (schemasByDb[db] ?? [])) as s (s)}
+												
+												{@const sKey = sk(db, s)}
 											<li>
-												<div
-													role="button"
-													tabindex="0"
-													class="group/row flex w-full cursor-pointer items-center gap-1 rounded-md py-1 pr-1 pl-1 text-left text-xs transition"
-													style:background={selectedSchema === s && selectedTable === tbl.name
-														? 'var(--md-primary-container)'
-														: 'transparent'}
-													style:color={selectedSchema === s && selectedTable === tbl.name
-														? 'var(--md-on-primary-container)'
-														: 'var(--md-on-surface)'}
-													onmouseenter={(e) =>
-														!(selectedSchema === s && selectedTable === tbl.name) &&
-														(e.currentTarget.style.background =
-															'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
-													onmouseleave={(e) =>
-														!(selectedSchema === s && selectedTable === tbl.name) &&
-														(e.currentTarget.style.background = 'transparent')}
-													onclick={() => onSelectTable(s, tbl.name)}
-													ondblclick={() => onSelectTable(s, tbl.name)}
-													onkeydown={(e) => {
-														if (e.key === 'Enter' || e.key === ' ') {
-															e.preventDefault();
-															onSelectTable(s, tbl.name);
-														}
-													}}
-													oncontextmenu={(e) => openTableMenu(e, s, tbl.name)}
-												>
-													<span
-														class="inline-block w-3 text-center text-[10px] transition-transform"
-														style:transform={tableExpanded[tk] ? 'rotate(90deg)' : 'rotate(0deg)'}
-														onclick={(e) => {
-															e.stopPropagation();
-															toggleTable(s, tbl.name);
+													<!-- schema row -->
+													<div
+														role="button"
+														tabindex="0"
+														class="group flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm transition"
+														style:background={isSchemaSelected(db, s)
+															? 'var(--md-secondary-container)'
+															: 'transparent'}
+														style:color={isSchemaSelected(db, s)
+															? 'var(--md-on-secondary-container)'
+															: 'var(--md-on-surface)'}
+														onmouseenter={(e) =>
+															!isSchemaSelected(db, s) &&
+															(e.currentTarget.style.background =
+																'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
+														onmouseleave={(e) =>
+															!isSchemaSelected(db, s) && (e.currentTarget.style.background = 'transparent')}
+														onclick={() => {
+															if (isSchemaSelected(db, s)) {
+																toggle(db, s);
+															} else {
+																onSelectSchema(db, s);
+																toggle(db, s, true);
+															}
 														}}
 														onkeydown={(e) => {
 															if (e.key === 'Enter' || e.key === ' ') {
 																e.preventDefault();
-																e.stopPropagation();
-																toggleTable(s, tbl.name);
+																if (isSchemaSelected(db, s)) {
+																	toggle(db, s);
+																} else {
+																	onSelectSchema(db, s);
+																	toggle(db, s, true);
+																}
 															}
 														}}
-														role="button"
-														tabindex="-1"
+														oncontextmenu={(e) => openSchemaMenu(e, s)}
 													>
-														▶
-													</span>
-													<span
-														class="text-[10px]"
-														style="color: var(--md-tertiary-container); filter: brightness(0.7);"
-													>
-														▦
-													</span>
-													<span class="flex-1 truncate font-mono">{tbl.name}</span>
-													{#if tbl.type !== 'TABLE'}
-														<span class="md-chip">{tbl.type}</span>
-													{/if}
-													<MdButton
-														variant="icon"
-														class="opacity-0 group-hover/row:opacity-100"
-														style="width: 1.125rem; height: 1.125rem;"
-														title={$t('sidebar.modify_table')}
-														onclick={(e) => {
-															e.stopPropagation();
-															onInspectTable?.(s, tbl.name);
-														}}
-													>
-														<span style="color: var(--md-on-surface-variant); font-size: 0.625rem;"
-															>⊞</span
-														>
-													</MdButton>
-													{#if !isReadOnlySchema(baseConn, s)}
-														<MdButton
-															variant="icon"
-															class="opacity-0 group-hover/row:opacity-100"
-															style="width: 1.125rem; height: 1.125rem;"
-															title={$t('sidebar.delete_table')}
+														<span
+															class="inline-block w-3 text-center text-[10px] transition-transform"
+															style:transform={expanded[sKey] ? 'rotate(90deg)' : 'rotate(0deg)'}
 															onclick={(e) => {
 																e.stopPropagation();
-																confirmingTable = { schema: s, table: tbl.name };
+																toggle(db, s);
+															}}
+															onkeydown={(e) => {
+																if (e.key === 'Enter' || e.key === ' ') {
+																	e.preventDefault();
+																	e.stopPropagation();
+																	toggle(db, s);
+																}
+															}}
+															role="button"
+															tabindex="-1"
+														>
+															▶
+														</span>
+														<span class="text-xs" style="color: var(--md-primary);">SC</span>
+														<span class="flex-1 truncate font-mono text-xs">{s}</span>
+														<MdButton
+															variant="icon"
+															class="opacity-0 group-hover:opacity-100"
+															style="width: 1.25rem; height: 1.25rem;"
+															title={$t('sidebar.new_table')}
+															onclick={(e) => {
+																e.stopPropagation();
+																onCreateTable?.(activeDb, s);
 															}}
 														>
-															<span style="color: var(--md-error); font-size: 0.625rem;">✕</span>
+															<span style="color: var(--md-primary); font-size: 0.75rem;">＋</span>
 														</MdButton>
-													{/if}
-												</div>
+													</div>
 
-												{#if tableExpanded[tk]}
-													<ul
-														class="ml-5 flex flex-col gap-px border-l"
-														style="border-color: var(--md-outline-variant);"
-													>
-														{#if colsLoading[tk]}
-															<li
-																class="px-3 py-1 text-[11px]"
-																style="color: var(--md-on-surface-variant);"
-															>
-																{$t('common.loading')}
-															</li>
-														{:else if (columnsByTable[tk] ?? []).length === 0}
-															<li
-																class="px-3 py-1 text-[11px]"
-																style="color: var(--md-on-surface-variant);"
-															>
-																{$t('sidebar.no_columns')}
-															</li>
-														{:else}
-															{#each columnsByTable[tk] as c (c.name)}
-																<li
-																	role="button"
-																	tabindex="0"
-																	class="flex w-full cursor-default items-center gap-1.5 rounded-md py-0.5 pr-2 pl-2 text-left text-[11px] transition"
-																	onmouseenter={(e) =>
-																		(e.currentTarget.style.background =
-																			'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
-																	onmouseleave={(e) =>
-																		(e.currentTarget.style.background = 'transparent')}
-																	ondblclick={() => void copyText(quoteIdent(c.name))}
-																	onkeydown={(e) => {
-																		if (e.key === 'Enter') {
-																			e.preventDefault();
-																			void copyText(quoteIdent(c.name));
-																		}
-																	}}
-																	oncontextmenu={(e) => openColumnMenu(e, s, t.name, c.name)}
-																	title={`${c.name} : ${c.type}${c.size ? `(${c.size})` : ''}${c.nullable === false ? ' NOT NULL' : ''}${c.isPrimaryKey ? ' PK' : ''}`}
-																>
-																	<span
-																		class="text-[10px]"
-																		style:color={c.isPrimaryKey
-																			? 'var(--md-tertiary)'
-																			: 'var(--md-on-surface-variant)'}
-																	>
-																		{c.isPrimaryKey ? '◆' : '·'}
-																	</span>
-																	<span
-																		class="truncate font-mono"
-																		style="color: var(--md-on-surface);">{c.name}</span
-																	>
-																	<span
-																		class="ml-auto truncate font-mono text-[10px]"
-																		style="color: var(--md-on-surface-variant); max-width: 8rem;"
-																	>
-																		{c.type}{c.size ? `(${c.size})` : ''}
-																	</span>
-																</li>
-															{/each}
-														{/if}
-													</ul>
-												{/if}
-											</li>
-										{/each}
-									{/if}
-								</ul>
+													<!-- table children -->
+													{#if expanded[sKey]}
+														<ul
+															class="ml-6 flex flex-col gap-px border-l"
+															style="border-color: var(--md-outline-variant);"
+														>
+															<TreeTableList
+																database={db}
+																schema={s}
+																tables={tablesBySchema[sKey] ?? []}
+																loading={loading[sKey] ?? false}
+																{selectedSchema}
+																{selectedTable}
+																tableExpanded={tableExpanded}
+																{columnsByTable}
+																{colsLoading}
+																readOnly={false}
+																{filter}
+																onSelectTable={(sch, tbl) => onSelectTable(activeDb, sch, tbl)}
+																onInspectTable={(sch, tbl) => onInspectTable?.(activeDb, sch, tbl)}
+																onDeleteTable={(sch, tbl) => (confirmingTable = { database: activeDb, schema: sch, table: tbl })}
+																onTableContextMenu={openTableMenu}
+																onToggleTable={toggleTable}
+																onColumnContextMenu={openColumnMenu}
+																onColumnCopy={(col) => void copyText(quoteIdent(col))}
+															/>
+														</ul>
+													{/if}
+												</li>
+											{/each}
+										{/if}
+									</ul>
+								{:else}
+									<!-- MySQL: Database → Table → Column（database 即 schema） -->
+									<ul
+										class="ml-6 flex flex-col gap-px border-l"
+										style="border-color: var(--md-outline-variant);"
+									>
+										<TreeTableList
+											database={db}
+											schema={db}
+											tables={tablesBySchema[db] ?? []}
+											loading={loading[db] ?? false}
+											{selectedSchema}
+											{selectedTable}
+											tableExpanded={tableExpanded}
+											{columnsByTable}
+											{colsLoading}
+											readOnly={isReadOnlySchema(baseConn, db)}
+											{filter}
+											onSelectTable={(sch, tbl) => onSelectTable(sch, sch, tbl)}
+											onInspectTable={(sch, tbl) => onInspectTable?.(sch, sch, tbl)}
+											onDeleteTable={(sch, tbl) => (confirmingTable = { database: sch, schema: sch, table: tbl })}
+											onTableContextMenu={openTableMenu}
+											onToggleTable={toggleTable}
+											onColumnContextMenu={openColumnMenu}
+											onColumnCopy={(col) => void copyText(quoteIdent(col))}
+										/>
+									</ul>
+								{/if}
 							{/if}
 						</li>
 					{/each}

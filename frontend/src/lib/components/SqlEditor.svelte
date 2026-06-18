@@ -86,7 +86,7 @@
 				wordWrap: singleLine ? 'off' : 'on',
 				tabSize: 2,
 				suggestOnTriggerCharacters: true,
-				quickSuggestions: { other: true, comments: false, strings: false },
+				quickSuggestions: { other: 'on', comments: false, strings: false },
 				acceptSuggestionOnEnter: 'off',
 				placeholder: placeholder ?? '',
 				...(singleLine && {
@@ -100,10 +100,14 @@
 				})
 			});
 
-			// 单行模式：阻止 Enter 插入换行
+			// 单行模式：Enter 触发 run；多行模式：让 Enter 始终插入换行（即使建议框弹出时）
 			if (singleLine) {
 				editor.addCommand(monaco.KeyCode.Enter, () => {
 					onCtrlEnter?.();
+				});
+			} else {
+				editor.addCommand(monaco.KeyCode.Enter, () => {
+					editor?.trigger('keyboard', 'type', { text: '\n' });
 				});
 			}
 

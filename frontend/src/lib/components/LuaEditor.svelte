@@ -163,9 +163,14 @@
 				wordWrap: 'on',
 				tabSize: 2,
 				suggestOnTriggerCharacters: true,
-				quickSuggestions: { other: true, comments: false, strings: false },
+				quickSuggestions: { other: 'on', comments: false, strings: false },
 				acceptSuggestionOnEnter: 'off',
 				placeholder
+			});
+
+			// 让 Enter 始终插入换行（即使建议框弹出时）；Esc/Tab 仍可关闭建议
+			editor.addCommand(monaco.KeyCode.Enter, () => {
+				editor?.trigger('keyboard', 'type', { text: '\n' });
 			});
 
 			modelChangeDisposer = editor.onDidChangeModelContent(() => {
