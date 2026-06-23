@@ -80,7 +80,7 @@ function mergeUnique(a, b) {
 }
 
 /**
- * SqlConsole 通用补全（全量关键字 + 函数）。
+ * SqlEditor 通用补全（全量关键字 + 函数）。
  * @param {'Mysql' | 'Postgresql'} driver
  * @returns {{ keywords: string[], functions: string[] }}
  */
@@ -92,6 +92,68 @@ export function getCompletionItems(driver) {
 			isPg ? PG_KEYWORDS : MYSQL_KEYWORDS
 		),
 		functions: mergeUnique(COMMON_FUNCTIONS, isPg ? PG_FUNCTIONS : MYSQL_FUNCTIONS)
+	};
+}
+
+/**
+ * FunctionPanel 使用的 plpgsql 函数体补全。
+ * 包含 PL/pgSQL 特定关键字、控制结构、内置函数等。
+ * @param {'Mysql' | 'Postgresql'} driver
+ * @returns {{ keywords: string[], functions: string[], plpgsqlKeywords: string[], plpgsqlFunctions: string[] }}
+ */
+export function getPlpgsqlCompletionItems(driver) {
+	const base = getCompletionItems(driver);
+
+	// PL/pgSQL 特定关键字（函数体中常用）
+	const PLPGSQL_KEYWORDS = [
+		'DECLARE', 'BEGIN', 'EXCEPTION', 'WHEN', 'RAISE', 'NOTICE',
+		'RETURNS', 'RETURN', 'RETURN NEXT', 'RETURN QUERY',
+		'OUT', 'INOUT', 'VARIADIC', 'DEFAULT',
+		'LANGUAGE', 'AS', 'IS', 'ELSIF',
+		'GET DIAGNOSTICS', 'SQLSTATE', 'SQLERRM',
+		'FOREACH', 'IN', 'LOOP', 'EXIT', 'CONTINUE',
+		'EXECUTE', 'USING', 'INTO', 'STRICT',
+		'CREATE OR REPLACE FUNCTION', 'CREATE OR REPLACE PROCEDURE',
+		'COMMENT ON', 'ALTER FUNCTION', 'ALTER PROCEDURE', 'DROP FUNCTION', 'DROP PROCEDURE'
+	];
+
+	// PL/pgSQL 内置函数
+	const PLPGSQL_FUNCTIONS = [
+		// 事务控制
+		'COMMIT', 'ROLLBACK', 'SAVEPOINT',
+		// 错误处理
+		'GET STACKED DIAGNOSTICS', 'GET DIAGNOSTICS',
+		// 类型转换
+		'CAST', '::', 'COALESCE', 'NULLIF',
+		// 字符串函数
+		'CONCAT', 'CONCAT_WS', 'SUBSTRING', 'TRIM', 'UPPER', 'LOWER', 'LENGTH', 'LENGTH_B',
+		'REPLACE', 'SPLIT_PART', 'REGEXP_REPLACE', 'REGEXP_MATCHES',
+		// 数值函数
+		'ROUND', 'TRUNC', 'FLOOR', 'CEIL', 'ABS', 'MOD',
+		// 日期时间函数
+		'NOW', 'CURRENT_DATE', 'CURRENT_TIME', 'CURRENT_TIMESTAMP',
+		'CLOCK_TIMESTAMP', 'STATEMENT_TIMESTAMP', 'TO_TIMESTAMP', 'TO_CHAR', 'TO_DATE',
+		'EXTRACT', 'DATE_TRUNC', 'AGE', 'OVERLAPS',
+		// 数组函数
+		'ARRAY_LENGTH', 'ARRAY_UPPER', 'ARRAY_LOWER', 'CARDINALITY',
+		// JSON 函数
+		'JSON_OBJECT', 'JSON_ARRAY', 'JSON_BUILD_OBJECT', 'JSON_BUILD_ARRAY',
+		'JSON_OBJECT_AGG', 'JSON_ARRAY_AGG', 'JSONB_OBJECT', 'JSONB_ARRAY',
+		'JSONB_BUILD_OBJECT', 'JSONB_BUILD_ARRAY', 'JSONB_SET', 'JSONB_INSERT',
+		'JSON_EACH', 'JSONB_EACH', 'JSON_EACH_TEXT', 'JSONB_EACH_TEXT',
+		'JSON_OBJECT_KEYS', 'JSONB_OBJECT_KEYS',
+		// 类型检查
+		'PG_TYPEOF', 'pg_typeof',
+		// 行/记录构造
+		'ROW', 'ROW_TO_JSON', 'JSON_TO_RECORD', 'JSONB_TO_RECORD',
+		// 杂项
+		'GENERATE_SERIES', 'NULLIF', 'GREATEST', 'LEAST'
+	];
+
+	return {
+		...base,
+		plpgsqlKeywords: PLPGSQL_KEYWORDS,
+		plpgsqlFunctions: PLPGSQL_FUNCTIONS
 	};
 }
 

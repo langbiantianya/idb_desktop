@@ -7,6 +7,7 @@
 	import SqlConsole from '$lib/components/SqlConsole.svelte';
 	import UserPanel from '$lib/components/UserPanel.svelte';
 	import DataGeneratorPanel from '$lib/components/DataGeneratorPanel.svelte';
+	import FunctionPanel from '$lib/components/FunctionPanel.svelte';
 	import TablePanel from '$lib/components/TablePanel.svelte';
 	import TableEditor from '$lib/components/TableEditor.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
@@ -22,6 +23,7 @@
 	 *   | { id: string; database: string; kind: 'sql'; schema: string; title: string }
 	 *   | { id: string; kind: 'users'; title: string }
 	 *   | { id: string; database: string; kind: 'generator'; schema: string; title: string }
+	 *   | { id: string; database: string; kind: 'routine'; schema: string; name: string; routineType: string; isNew?: boolean; title: string }
 	 * } Tab
 	 */
 
@@ -144,6 +146,40 @@
 		const id = baseConn?.driver === 'Mysql' ? `generator:${selectedSchema}` : `generator:${db}:${selectedSchema}`;
 		if (!tabs.find((t) => t.id === id)) {
 			tabs = [...tabs, { id, database: db, kind: 'generator', schema: selectedSchema, title: get(t)('dg.tab_title', { schema: selectedSchema }) }];
+		}
+		activeTabId = id;
+	}
+
+	/**
+	 * 打开函数/存储过程 tab
+	 * @param {string} database
+	 * @param {string} schema
+	 * @param {string} name
+	 * @param {string} routineType
+	 */
+	function pickRoutine(database, schema, name, routineType) {
+		selectedDatabase = database;
+		selectedSchema = schema;
+		const id = `routine:${database}:${schema}:${name}`;
+		if (!tabs.find((t) => t.id === id)) {
+			tabs = [...tabs, { id, database, kind: 'routine', schema, name, routineType, title: name }];
+		}
+		activeTabId = id;
+	}
+
+	/**
+	 * 创建新的函数/存储过程 tab（新建模式）
+	 * @param {string} database
+	 * @param {string} schema
+	 * @param {'FUNCTION'|'PROCEDURE'} routineType
+	 */
+	function createRoutine(database, schema, routineType = 'FUNCTION') {
+		selectedDatabase = database;
+		selectedSchema = schema;
+		// 使用 routineType 生成唯一 id，支持同一 schema 下创建多个不同类型
+		const id = `routine:new:${routineType}:${database}:${schema}`;
+		if (!tabs.find((t) => t.id === id)) {
+			tabs = [...tabs, { id, database, kind: 'routine', schema, name: '', routineType, isNew: true, title: get(t)('routine.new_title', { schema }) }];
 		}
 		activeTabId = id;
 	}
@@ -305,6 +341,8 @@
 				selectedSchema = schema;
 				openGeneratorTab();
 			}}
+			onSelectRoutine={pickRoutine}
+			onCreateRoutine={createRoutine}
 		/>
 
 		<!-- Workspace -->
@@ -348,6 +386,8 @@
 								<span style="color: var(--md-primary);">⌘</span>
 							{:else if tab.kind === 'generator'}
 								<span style="color: var(--md-tertiary);">⚡</span>
+							{:else if tab.kind === 'routine'}
+								<span style="color: var(--md-tertiary);">ƒ</span>
 							{:else}
 								<span style="color: var(--md-secondary);">◐</span>
 							{/if}
@@ -399,6 +439,11 @@
 							{@const sc = connFor(tab.database, tab.schema)}
 							{#if sc}
 								<DataGeneratorPanel schemaConn={sc} />
+							{/if}
+						{:else if tab.kind === 'routine'}
+							{@const sc = connFor(tab.database, tab.schema)}
+							{#if sc}
+								<FunctionPanel schemaConn={sc} name={tab.name} routineType={tab.routineType} schema={tab.schema} isNew={tab.isNew ?? false} />
 							{/if}
 						{/if}
 					</div>

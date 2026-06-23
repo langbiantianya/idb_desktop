@@ -79,6 +79,7 @@ idb_desktop/
 │   │   │   │   ├── TablePanel.svelte      # 表结构编辑器（ALTER TABLE，支持改名）
 │   │   │   │   ├── TableEditor.svelte     # 新建表向导
 │   │   │   │   ├── RowEditor.svelte       # 行插入/编辑表单
+│   │   │   │   ├── FunctionPanel.svelte  # 函数/存储过程/触发器管理（查看/创建/编辑/删除/plpgsql补全/调用/调试）
 │   │   │   │   ├── Modal.svelte           # 通用模态框
 │   │   │   │   ├── ConfirmDialog.svelte   # 确认对话框
 │   │   │   │   ├── ContextMenu.svelte     # 右键上下文菜单
@@ -230,6 +231,14 @@ idb_desktop/
 | TABLE | UPDATE | `{ tableName, operation, column?, columnName? }` | **operation 字段** 二级路由：`ADD_COLUMN`（含 `column`）/ `MODIFY_COLUMN`（含 `column`，可改名 `newName`）/ `DROP_COLUMN`（含 `columnName`） |
 | TABLE | DELETE | `{ tableName }` | 删除整张表 |
 | TABLE | GET_DDL | `{ tableName }` | 取建表语句字符串 |
+| FUNCTION | LIST | `{ schema }` | 列出 schema 内的 Function/Procedure/Trigger；返回 `[{Name, routine_type, return_type, language, ...}]` |
+| FUNCTION | INFO | `{ name, schema }` | 获取函数详情（routineType 自动解析）；返回详细信息含 `arg_count`, `arg_names`, `description` |
+| FUNCTION | GET_DDL | `{ name, schema }` | 获取完整 DDL 定义（routineType 自动解析） |
+| FUNCTION | CREATE | `{ ddl }` | 创建函数/存储过程/触发器，直接执行完整 DDL 语句 |
+| FUNCTION | UPDATE | `{ ddl }` | 验证 DDL 语法（不创建） |
+| FUNCTION | CALL | `{ name, routineType, schema, args }` | 调用函数/存储过程（PROCEDURE 用 `CALL`，FUNCTION 用 `SELECT func()`）；返回 `{result, row_count}` 或 `{update_count}` |
+| FUNCTION | DELETE | `{ name, routineType, schema, ifExists?, cascade? }` | 删除函数/存储过程/触发器 |
+| FUNCTION | DEBUG | `{ name, schema }` | 函数调试（EXPLAIN、执行计划、依赖分析）；仅 FUNCTION |
 | DATA | LIST | `{ tableName, page, pageSize, where?, orderBy? }` | **page 从 1 开始**；LOB / 长文本字段引擎自动截断为 `[LOB Data]`；返回 `{ total, page, pageSize, rows: [...] }`。`where` / `orderBy` 是 SQL 片段，由前端 `sqlValidate.js` 方言级校验后透传，引擎侧会再次校验 |
 | DATA | LIST | `{ tableName, page: 1, pageSize: 0, where?, orderBy? }` | **全量流式查询**：触发引擎流式多行响应（`stream:true`），每行含单条数据，末行 `end:true` |
 | DATA | CREATE | `{ tableName, values: { col: val, ... } }` | 单行插入；返回 `{ affectedRows }` |
@@ -701,6 +710,7 @@ cd frontend && npm run lint
 | 数据表格查看/编辑 | ✅ 分页（20/50/100/200/500/全量） + 全量流式加载 + 虚拟滚动 + 行 CRUD + 列内筛选 + 搜索 + 双行 header（标题工具栏 / WHERE+ORDER BY） |
 | SQL 控制台 | ✅ Monaco 编辑器 + 智能补全（按 driver 区分） + 多语句执行 + SELECT 流式 + 虚拟滚动 + 增量 UI 更新 + sql-formatter 格式化（Alt+Shift+F） |
 | 表结构编辑 | ✅ Draft 模式列编辑器（ADD / MODIFY / DROP COLUMN）+ 新建表向导 + 字段改名（newName）+ GET_DDL |
+| 函数与存储过程管理 | ✅ Function / Procedure / Trigger 列表 + 查看 + 创建（完整 DDL）+ 编辑 + 删除；plpgsql 语法补全；调用执行；EXPLAIN 调试；TRIGGER 不支持手动调用（显示提示）；Sidebar 显示类型标签和关联表 |
 | 用户与权限管理 | ✅ 用户列表 + GRANT/REVOKE 模态框 |
 | WHERE / ORDER BY 安全 | ✅ 前端 `sqlValidate.js` 方言级校验 + 引擎侧二次校验 |
 | MD3 Token / Tailwind theme | ✅ 完整 MD3 令牌注入 + 亮色/暗色/自动主题 + 自定义主题加载（`~/.config/idb/theme/*.css`） |

@@ -407,6 +407,121 @@ export const updateRow = (connection, tableName, changes, where) =>
 export const deleteRow = (connection, tableName, where) =>
 	invoke('DATA', 'DELETE', connection, { tableName, where });
 
+// -------- FUNCTION / STORED PROCEDURE (PostgreSQL) --------
+
+/**
+ * @typedef {Object} RoutineInfo
+ * @property {string} name
+ * @property {'FUNCTION'|'PROCEDURE'} routine_type
+ * @property {string} [return_type]
+ * @property {string} language
+ * @property {string} security_definer
+ * @property {string} volatility
+ * @property {string} arg_count
+ * @property {string} [arg_names]
+ * @property {string} schema
+ * @property {string} [description]
+ */
+
+/**
+ * @typedef {Object} RoutineDetail
+ * @property {string} name
+ * @property {'FUNCTION'|'PROCEDURE'} routine_type
+ * @property {string} schema
+ * @property {string} [return_type]
+ * @property {string} language
+ * @property {string} [source_code]
+ * @property {string} security_definer
+ * @property {string} volatility
+ * @property {string} [returns_set]
+ * @property {string} [identity_args]
+ * @property {string} [description]
+ * @property {string} [args]
+ */
+
+/**
+ * @typedef {Object} RoutineArg
+ * @property {string} name
+ * @property {'IN'|'OUT'|'INOUT'} mode
+ * @property {string} dataType
+ * @property {string|null} [defaultValue]
+ */
+
+/**
+ * 列出函数/存储过程。
+ * @param {ConnectionConfig} connection
+ * @param {string} schema
+ * @returns {Promise<Response>}
+ */
+export const listRoutines = (connection, schema) =>
+	invoke('FUNCTION', 'LIST', connection, { schema });
+
+/**
+ * 获取函数/存储过程详细信息（后端自动解析 routineType）。
+ * @param {ConnectionConfig} connection
+ * @param {string} name
+ * @param {string} schema
+ * @returns {Promise<Response>}
+ */
+export const getRoutineInfo = (connection, name, schema) =>
+	invoke('FUNCTION', 'INFO', connection, { name, schema });
+
+/**
+ * 获取函数/存储过程/触发器的 DDL 定义（后端自动解析类型）。
+ * @param {ConnectionConfig} connection
+ * @param {string} name
+ * @param {string} schema
+ * @returns {Promise<Response>}
+ */
+export const getRoutineDdl = (connection, name, schema) =>
+	invoke('FUNCTION', 'GET_DDL', connection, { name, schema });
+
+/**
+ * 创建函数/存储过程（直接执行完整 DDL）。
+ * @param {ConnectionConfig} connection
+ * @param {{ ddl: string }} input - 完整 DDL 语句，如 "CREATE OR REPLACE FUNCTION ..."
+ * @returns {Promise<Response>}
+ */
+export const createRoutine = (connection, input) =>
+	invoke('FUNCTION', 'CREATE', connection, /** @type {Record<string, unknown>} */ (input));
+
+/**
+ * 删除函数/存储过程。
+ * @param {ConnectionConfig} connection
+ * @param {{ name: string; routineType: 'FUNCTION'|'PROCEDURE'; schema: string; ifExists?: boolean; cascade?: boolean }} input
+ * @returns {Promise<Response>}
+ */
+export const deleteRoutine = (connection, input) =>
+	invoke('FUNCTION', 'DELETE', connection, /** @type {Record<string, unknown>} */ (input));
+
+/**
+ * 调用函数/存储过程。
+ * @param {ConnectionConfig} connection
+ * @param {{ name: string; routineType: 'FUNCTION'|'PROCEDURE'; schema: string; args?: unknown[] }} input
+ * @returns {Promise<Response>}
+ */
+export const callRoutine = (connection, input) =>
+	invoke('FUNCTION', 'CALL', connection, /** @type {Record<string, unknown>} */ (input));
+
+/**
+ * 调试函数（EXPLAIN、执行计划、依赖分析）。
+ * @param {ConnectionConfig} connection
+ * @param {string} name
+ * @param {string} schema
+ * @returns {Promise<Response>}
+ */
+export const debugRoutine = (connection, name, schema) =>
+	invoke('FUNCTION', 'DEBUG', connection, { name, schema });
+
+/**
+ * 验证函数/存储过程 DDL 语法（不创建）。
+ * @param {ConnectionConfig} connection
+ * @param {{ ddl: string }} input - 完整 DDL 语句
+ * @returns {Promise<Response>}
+ */
+export const validateRoutine = (connection, input) =>
+	invoke('FUNCTION', 'UPDATE', connection, /** @type {Record<string, unknown>} */ (input));
+
 // -------- SQL --------
 
 /** @param {ConnectionConfig} connection @param {string} sql */

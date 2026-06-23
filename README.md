@@ -9,6 +9,7 @@
 ## 特色
 
 - **造数工作台** — Lua 脚本驱动批量造数，内置 11 个随机函数 + 多 Lua 版本支持 + Monaco 编辑器（关键字/标准库/数据库元数据补全）+ StyLua 格式化 + 流式 SQL 日志
+- **函数与存储过程管理** — 查看/创建/编辑/删除 Function、Procedure、Trigger；plpgsql 语法补全；调用执行；EXPLAIN 调试
 - **数据浏览与编辑** — 三级树形浏览 + 分页/全量流式 + 虚拟滚动 + 行级 CRUD + 列内筛选
 - **SQL 控制台** — Monaco 编辑器 + 按 driver 智能补全 + 多语句执行 + SELECT 流式返回
 - **表结构管理** — 新建表向导 + ALTER TABLE Draft 模式编辑器（ADD/MODIFY/DROP + 改名）+ GET_DDL

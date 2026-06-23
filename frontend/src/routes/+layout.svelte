@@ -47,7 +47,10 @@
 
 	$effect(() => {
 		initTheme();
-		IsDevMode().then((v) => (devMode = v));
+		// 防御性检查：Wails 绑定可能尚未加载完成
+		if (typeof window.go?.main?.App?.IsDevMode === 'function') {
+			IsDevMode().then((v) => (devMode = v));
+		}
 	});
 
 	// 设置加载完成后，未完成引导则跳转 /setup（已在 /setup 则不跳）

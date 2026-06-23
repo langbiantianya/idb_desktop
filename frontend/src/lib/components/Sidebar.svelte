@@ -3,10 +3,13 @@
 		listSchemas,
 		listTables,
 		listColumns,
+		listRoutines,
 		createSchema,
 		deleteSchema,
 		deleteTable,
-		getTableDdl
+		getTableDdl,
+		getRoutineDdl,
+		deleteRoutine
 	} from '$lib/api';
 	import { asStringList, asTableList, asColumnList } from '$lib/api/normalize.js';
 	import { ok, err } from '$lib/stores/toasts.js';
@@ -35,6 +38,8 @@
 	 * @property {(database: string, schema: string, table: string) => void} [onInspectTable]
 	 * @property {(database: string, schema: string, table: string) => void} [onTableDeleted]
 	 * @property {(database: string, schema: string) => void} [onOpenGenerator]
+	 * @property {(database: string, schema: string, name: string, routineType: string) => void} [onSelectRoutine]
+	 * @property {(database: string, schema: string, routineType: string) => void} [onCreateRoutine]
 	 */
 
 	/** @type {Props} */
@@ -49,7 +54,9 @@
 		onCreateTable,
 		onInspectTable,
 		onTableDeleted,
-		onOpenGenerator
+		onOpenGenerator,
+		onSelectRoutine,
+		onCreateRoutine
 	} = $props();
 
 	let isPg = $derived(baseConn.driver === 'Postgresql');
@@ -81,11 +88,24 @@
 	/** "schema.table" -> 是否正在加载列 @type {Record<string, boolean>} */
 	let colsLoading = $state({});
 
+	// Functions / Stored Procedures (仅 PostgreSQL)
+	/** schema -> 是否展开 @type {Record<string, boolean>} */
+	let routinesExpanded = $state({});
+	/** schema -> 函数列表 @type {Record<string, RoutineEntry[]>} */
+	let routinesBySchema = $state(/** @type {Record<string, RoutineEntry[]>} */ ({}));
+	/** schema -> 是否正在加载 @type {Record<string, boolean>} */
+	let routinesLoading = $state({});
+
 	let creating = $state(false);
 	let newName = $state('');
 	let newCharset = $state('utf8mb4');
 	let newCollate = $state('utf8mb4_unicode_ci');
 	let createPending = $state(false);
+
+	// 新建 Routine 类型选择
+	let showRoutineTypePicker = $state(false);
+	let routineTypePickerSchema = $state('');
+	let routineTypePending = $state(false);
 
 	// MySQL 常见 charset → collation 映射
 	const CHARSET_OPTIONS = ['utf8mb4', 'utf8', 'latin1', 'ascii', 'utf16', 'binary'];
@@ -111,6 +131,10 @@
 
 	let confirmingTable = $state(/** @type {{ database: string; schema: string; table: string } | null} */ (null));
 	let deleteTablePending = $state(false);
+
+	// Routine 确认删除
+	let confirmingRoutine = $state(/** @type {{ database: string; schema: string; name: string; routineType: string } | null} */ (null));
+	let deleteRoutinePending = $state(false);
 
 	/** PG 当前活跃数据库（用于连接构造） */
 	let activeDb = $derived.by(() => {
@@ -169,6 +193,8 @@
 	 *   | { x: number; y: number; kind: 'schema'; schema: string }
 	 *   | { x: number; y: number; kind: 'table'; schema: string; table: string }
 	 *   | { x: number; y: number; kind: 'column'; schema: string; table: string; column: string }
+	 *   | { x: number; y: number; kind: 'routines'; schema: string }
+	 *   | { x: number; y: number; kind: 'routine'; schema: string; name: string; routineType: string }
 	 * } MenuState
 	 */
 	let menu = $state(/** @type {MenuState | null} */ (null));
@@ -375,6 +401,41 @@
 		if (target && !columnsByTable[key]) await loadColumns(db, schema, table);
 	}
 
+	/** 加载 Functions / Stored Procedures */
+	async function loadRoutines(db, schema) {
+		const key = sk(db, schema);
+		routinesLoading = { ...routinesLoading, [key]: true };
+		try {
+			const conn = { ...baseConn, database: db, _schema: schema };
+			const resp = await listRoutines(conn, schema);
+			if (!resp.success) {
+				err(resp.error ?? get(t)('sidebar.toast.routines_failed', { schema }));
+				routinesBySchema = { ...routinesBySchema, [key]: [] };
+				return;
+			}
+			routinesBySchema = { ...routinesBySchema, [key]: resp.data ?? [] };
+		} finally {
+			routinesLoading = { ...routinesLoading, [key]: false };
+		}
+	}
+
+	/** 展开/折叠 Functions 节点 */
+	async function toggleRoutines(db, schema, force) {
+		const key = sk(db, schema);
+		const target = force === undefined ? !routinesExpanded[key] : force;
+		routinesExpanded = { ...routinesExpanded, [key]: target };
+		if (target && !routinesBySchema[key]) await loadRoutines(db, schema);
+	}
+
+	/**
+	 * 创建新的 Routine（点击 + 按钮后选择类型）
+	 * @param {'FUNCTION'|'PROCEDURE'} routineType
+	 */
+	function doCreateRoutine(routineType) {
+		showRoutineTypePicker = false;
+		onCreateRoutine?.(activeDb, routineTypePickerSchema, routineType);
+	}
+
 	async function doCreate() {
 		const name = newName.trim();
 		if (!name) return;
@@ -475,6 +536,29 @@
 		}
 	}
 
+	async function doDeleteRoutine() {
+		if (!confirmingRoutine) return;
+		const { database, schema, name, routineType } = confirmingRoutine;
+		deleteRoutinePending = true;
+		try {
+			const conn = { ...baseConn, database, _schema: schema };
+			const resp = await deleteRoutine(conn, { name, routineType, schema });
+			if (!resp.success) {
+				err(resp.error ?? get(t)('sidebar.toast.delete_routine_failed'));
+				return;
+			}
+			ok(get(t)('sidebar.toast.routine_deleted', { name }));
+			confirmingRoutine = null;
+			// 刷新 routine 列表
+			const key = sk(database, schema);
+			delete routinesBySchema[key];
+			routinesBySchema = { ...routinesBySchema };
+			await toggleRoutines(database, schema, true);
+		} finally {
+			deleteRoutinePending = false;
+		}
+	}
+
 	export async function refreshTablesIn(db, schema) {
 		await loadTables(db, schema);
 	}
@@ -569,6 +653,35 @@
 	function menuDeleteTable(schema, table) {
 		closeMenu();
 		confirmingTable = { database: dbFor(schema), schema, table };
+	}
+
+	// Routine 菜单处理函数
+	function menuRefreshRoutines(schema) {
+		closeMenu();
+		const key = sk(activeDb, schema);
+		delete routinesBySchema[key];
+		routinesBySchema = { ...routinesBySchema };
+		void toggleRoutines(activeDb, schema, true);
+	}
+
+	async function menuViewRoutineDdl(schema, name, routineType) {
+		closeMenu();
+		try {
+			const conn = { ...baseConn, database: activeDb, _schema: schema };
+			const resp = await getRoutineDdl(conn, name, schema);
+			if (resp.success) {
+				await copyText(resp.data);
+			} else {
+				err(resp.error ?? get(t)('routine.ddl_failed'));
+			}
+		} catch (e) {
+			err(String(e));
+		}
+	}
+
+	function menuDeleteRoutine(schema, name, routineType) {
+		closeMenu();
+		confirmingRoutine = { database: dbFor(schema), schema, name, routineType };
 	}
 
 	function quoteIdent(s) {
@@ -715,6 +828,45 @@
 				});
 			}
 			return items;
+		}
+		if (menu.kind === 'routines') {
+			return [
+				{
+					label: $t('sidebar.refresh_routines'),
+					icon: '↻',
+					onClick: () => menuRefreshRoutines(menu.schema)
+				},
+				null,
+				{
+					label: $t('sidebar.new_routine'),
+					icon: '＋',
+					onClick: () => {
+						routineTypePickerSchema = menu.schema;
+						showRoutineTypePicker = true;
+					}
+				}
+			];
+		}
+		if (menu.kind === 'routine') {
+			return [
+				{
+					label: $t('sidebar.edit_routine'),
+					icon: '✎',
+					onClick: () => onSelectRoutine?.(activeDb, menu.schema, menu.name, menu.routineType)
+				},
+				{
+					label: $t('sidebar.view_routine_ddl'),
+					icon: '⊕',
+					onClick: () => menuViewRoutineDdl(menu.schema, menu.name, menu.routineType)
+				},
+				null,
+				{
+					label: $t('sidebar.delete_routine'),
+					icon: '✕',
+					danger: true,
+					onClick: () => menuDeleteRoutine(menu.schema, menu.name, menu.routineType)
+				}
+			];
 		}
 		// column
 		return [
@@ -1005,7 +1157,159 @@
 															/>
 														</ul>
 													{/if}
-												</li>
+													<!-- Functions / Stored Procedures (仅 PG) -->
+													<li>
+														<div
+															role="button"
+															tabindex="0"
+															class="group flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm transition"
+															style:background={routinesExpanded[sKey]
+																? 'var(--md-secondary-container)'
+																: 'transparent'}
+															style:color={routinesExpanded[sKey]
+																? 'var(--md-on-secondary-container)'
+																: 'var(--md-on-surface)'}
+															onmouseenter={(e) =>
+																!routinesExpanded[sKey] &&
+																(e.currentTarget.style.background =
+																	'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
+															onmouseleave={(e) =>
+																!routinesExpanded[sKey] && (e.currentTarget.style.background = 'transparent')}
+															onclick={() => void toggleRoutines(db, s)}
+															onkeydown={(e) => {
+																if (e.key === 'Enter' || e.key === ' ') {
+																	e.preventDefault();
+																	void toggleRoutines(db, s);
+																}
+															}}
+															oncontextmenu={(e) => {
+																e.preventDefault();
+																menu = {
+																	x: e.clientX,
+																	y: e.clientY,
+																	kind: 'routines',
+																	schema: s
+																};
+															}}
+														>
+															<span
+																class="inline-block w-3 text-center text-[10px] transition-transform"
+																style:transform={routinesExpanded[sKey] ? 'rotate(90deg)' : 'rotate(0deg)'}
+																onclick={(e) => {
+																	e.stopPropagation();
+																	void toggleRoutines(db, s);
+																}}
+																onkeydown={(e) => {
+																	if (e.key === 'Enter' || e.key === ' ') {
+																		e.preventDefault();
+																		e.stopPropagation();
+																		void toggleRoutines(db, s);
+																	}
+																}}
+																role="button"
+																tabindex="-1"
+															>
+																▶
+															</span>
+															<span class="text-xs" style="color: var(--md-tertiary);">FN</span>
+															<span class="flex-1 truncate font-mono text-xs">{$t('sidebar.functions')}</span>
+															{#if (routinesBySchema[sKey] ?? []).length > 0}
+																<span class="text-[10px]" style="color: var(--md-on-surface-variant);">
+																	{(routinesBySchema[sKey] ?? []).length}
+																</span>
+															{/if}
+															<MdButton
+																variant="icon"
+																class="opacity-0 group-hover:opacity-100"
+																style="width: 1.25rem; height: 1.25rem;"
+																title={$t('sidebar.new_routine')}
+																onclick={(e) => {
+																	e.stopPropagation();
+																	routineTypePickerSchema = s;
+																	showRoutineTypePicker = true;
+																}}
+															>
+																<span style="color: var(--md-primary); font-size: 0.75rem;">＋</span>
+															</MdButton>
+														</div>
+
+														{#if routinesExpanded[sKey]}
+															<ul
+																class="ml-6 flex flex-col gap-px border-l"
+																style="border-color: var(--md-outline-variant);"
+															>
+																{#if routinesLoading[sKey]}
+																	<li class="px-3 py-1 text-xs" style="color: var(--md-on-surface-variant);">
+																		{$t('common.loading')}
+																	</li>
+																{:else if (routinesBySchema[sKey] ?? []).length === 0}
+																	<li class="px-3 py-1 text-xs" style="color: var(--md-on-surface-variant);">
+																		{$t('sidebar.empty_routines')}
+																	</li>
+																{:else}
+																	{#each (routinesBySchema[sKey] ?? []) as routine (routine.name)}
+																		<li>
+																			<div
+																				role="button"
+																				tabindex="0"
+																				class="group flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-left text-xs transition"
+																				onmouseenter={(e) =>
+																					(e.currentTarget.style.background =
+																						'color-mix(in srgb, var(--md-on-surface) 6%, transparent)')}
+																				onmouseleave={(e) =>
+																					(e.currentTarget.style.background = 'transparent')}
+																				onclick={() => onSelectRoutine?.(activeDb, s, routine.name, routine.routine_type)}
+																				onkeydown={(e) => {
+																					if (e.key === 'Enter' || e.key === ' ') {
+																						e.preventDefault();
+																						onSelectRoutine?.(activeDb, s, routine.name, routine.routine_type);
+																					}
+																				}}
+																				oncontextmenu={(e) => {
+																					e.preventDefault();
+																					menu = {
+																						x: e.clientX,
+																						y: e.clientY,
+																						kind: 'routine',
+																						schema: s,
+																						name: routine.name,
+																						routineType: routine.routine_type
+																					};
+																				}}
+																			>
+																				<span style="color: var(--md-tertiary); font-size: 0.625rem;">
+																					{routine.routine_type === 'PROCEDURE'
+																						? 'PRC'
+																						: routine.routine_type === 'TRIGGER'
+																							? 'TRG'
+																							: 'FUN'}
+																				</span>
+																				<span class="flex-1 truncate font-mono">{routine.name}</span>
+																				{#if routine.trigger_table}
+																					<span
+																						class="max-w-20 truncate rounded bg-tertiary-container px-1 text-[10px]"
+																						style="color: var(--md-on-tertiary-container);"
+																						title="Trigger on {routine.trigger_table}"
+																					>
+																						→ {routine.trigger_table}
+																					</span>
+																				{/if}
+																				{#if routine.description}
+																					<span
+																						class="max-w-24 truncate text-[10px]"
+																						style="color: var(--md-on-surface-variant);"
+																						title={routine.description}
+																					>
+																						— {routine.description}
+																					</span>
+																				{/if}
+																			</div>
+																		</li>
+																	{/each}
+																{/if}
+															</ul>
+														{/if}
+													</li>
 											{/each}
 										{/if}
 									</ul>
@@ -1099,6 +1403,38 @@
 	{/snippet}
 </Modal>
 
+<!-- 创建 Routine 类型选择 -->
+<Modal
+	open={showRoutineTypePicker}
+	title={$t('routine.new_routine_type')}
+	size="sm"
+	onClose={() => (showRoutineTypePicker = false)}
+>
+	<div class="flex flex-col gap-3">
+		<p class="text-sm" style="color: var(--md-on-surface-variant);">
+			{$t('routine.select_type_hint')}
+		</p>
+		<div class="flex gap-3">
+			<MdButton
+				variant="outlined"
+				class="flex-1"
+				onclick={() => doCreateRoutine('FUNCTION')}
+				disabled={routineTypePending}
+			>
+				{$t('routine.type_function')}
+			</MdButton>
+			<MdButton
+				variant="outlined"
+				class="flex-1"
+				onclick={() => doCreateRoutine('PROCEDURE')}
+				disabled={routineTypePending}
+			>
+				{$t('routine.type_procedure')}
+			</MdButton>
+		</div>
+	</div>
+</Modal>
+
 <ConfirmDialog
 	open={confirming !== null}
 	title={$t('sidebar.dialog.delete_schema_title')}
@@ -1124,6 +1460,22 @@
 	pending={deleteTablePending}
 	onConfirm={doDeleteTable}
 	onCancel={() => (confirmingTable = null)}
+/>
+
+<ConfirmDialog
+	open={confirmingRoutine !== null}
+	title={$t('sidebar.dialog.delete_routine_title')}
+	message={confirmingRoutine
+		? $t('sidebar.dialog.delete_routine_msg', {
+				name: confirmingRoutine.name,
+				routineType: confirmingRoutine.routineType
+			})
+		: ''}
+	confirmText={$t('common.delete')}
+	danger
+	pending={deleteRoutinePending}
+	onConfirm={doDeleteRoutine}
+	onCancel={() => (confirmingRoutine = null)}
 />
 
 <!-- 右键菜单 -->
