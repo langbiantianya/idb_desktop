@@ -478,8 +478,8 @@ export const executeSqlStreaming = (connection, sql, onRow) =>
 /**
  * 流式造数。每张表完成后通过 onProgress 推送进度（stream:true），最终 end:true。
  * @param {ConnectionConfig} connection
- * @param {{ count: number; script: string }[]} tables
- * @param {(data: { table: string; inserted: number; total: number; index: number; sql: string }) => void} onProgress
+ * @param {{ script: string }[]} tables - 每项只传 script，循环次数由脚本内部控制
+ * @param {(data: { table: string; inserted: number; scriptInserted: number; scriptIndex: number; totalScripts: number; sql: string; data: Record<string, unknown> }) => void} onProgress
  * @param {{ luaVersion?: string }} [options]
  * @returns {Promise<Response>}
  */

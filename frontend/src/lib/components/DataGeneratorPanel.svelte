@@ -19,7 +19,6 @@
 	let { schemaConn } = $props();
 
 	// ---- 配置 ----
-	let count = $state(100);
 	let script = $state('');
 
 	// ---- 数据库元数据（补全用）----
@@ -73,12 +72,29 @@
 	/** 从 INSERT SQL 中提取表名 */
 	const TABLE_RE = /INSERT\s+INTO\s+[`'"]?(\w+)[`'"]?/i;
 
+	/** 格式化一行数据为可读字符串 */
+	function formatRowData(data) {
+		if (!data || typeof data !== 'object') return '';
+		const entries = Object.entries(data);
+		if (entries.length === 0) return '';
+		return ' → ' + entries.map(([k, v]) => {
+			if (v === null) return `${k}=null`;
+			if (typeof v === 'string') return `${k}='${v}'`;
+			return `${k}=${v}`;
+		}).join(', ');
+	}
+
 	function flushLogs() {
-		// 在 flush 窗口统一处理：SQL 提取 + 表名正则计数
-		for (const data of rawBuf) {
-			if (data.sql) {
-				logBuf.push(data.sql);
-				const m = TABLE_RE.exec(data.sql);
+		// 在 flush 窗口统一处理：SQL 提取 + 表名正则计数 + 行数据拼接
+		for (const item of rawBuf) {
+			if (item.sql) {
+				let line = item.sql;
+				// 如果有实际插入的数据，拼在 SQL 后面
+				if (item.data) {
+					line += formatRowData(item.data);
+				}
+				logBuf.push(line);
+				const m = TABLE_RE.exec(item.sql);
 				if (m) {
 					const tbl = m[1];
 					latestCounts[tbl] = (latestCounts[tbl] || 0) + 1;
@@ -112,11 +128,6 @@
 	async function run() {
 		if (running) return;
 
-		if (!count || count <= 0) {
-			err(get(t)('dg.toast.no_count', { index: 1 }));
-			return;
-		}
-
 		running = true;
 		sqlLogs = [];
 		logBuf = [];
@@ -125,7 +136,7 @@
 		latestCounts = {};
 		logFlushTimer = setInterval(flushLogs, 100);
 
-		const tables = [{ count, script }];
+		const tables = [{ script }];
 
 		try {
 			const resp = await generateData(schemaConn, tables, (data) => {
@@ -180,18 +191,7 @@
 					<option value="5.5">Lua 5.5</option>
 				</select>
 			</div>
-			<div class="flex items-center gap-1">
-				<span class="text-xs" style="color: var(--md-on-surface-variant);">{$t('dg.count')}</span>
-				<input
-					type="number"
-					class="dg-count-input"
-					value={count}
-					min="1"
-					placeholder={$t('dg.count_placeholder')}
-					oninput={(e) => (count = parseInt(/** @type {HTMLInputElement} */ (e.target).value) || 1)}
-				/>
-			</div>
-			<button
+						<button
 				type="button"
 				class="dg-format-btn"
 				onclick={format}
@@ -281,20 +281,6 @@
 <DataGenHelp open={showHelp} onClose={() => (showHelp = false)} />
 
 <style>
-	.dg-count-input {
-		width: 5rem;
-		padding: 0.125rem 0.375rem;
-		font-size: 0.75rem;
-		font-family: 'JetBrains Mono', monospace;
-		border: 1px solid var(--md-outline-variant);
-		border-radius: var(--md-radius-xs);
-		background: var(--md-surface-container-lowest);
-		color: var(--md-on-surface);
-		outline: none;
-	}
-	.dg-count-input:focus {
-		border-color: var(--md-primary);
-	}
 	.dg-version-select {
 		padding: 0.125rem 0.375rem;
 		font-size: 0.75rem;
