@@ -22,6 +22,8 @@ export function ListThemes():Promise<Array<main.ThemeInfo>>;
 
 export function LoadSettings():Promise<main.AppSettings>;
 
+export function PickDirectory(arg1:string):Promise<string>;
+
 export function RestartEngine():Promise<void>;
 
 export function SaveConnection(arg1:main.SaveConnectionInput):Promise<main.SavedConnection>;

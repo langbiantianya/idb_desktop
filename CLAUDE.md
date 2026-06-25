@@ -55,6 +55,7 @@ idb_desktop/
 │   │   │   │   ├── index.js     # 统一请求封装（invoke + invokeStreaming + generateData）
 │   │   │   │   ├── connections.js # 连接管理 API（List/Get/Save/Delete）
 │   │   │   │   ├── themes.js    # 主题与应用设置 API（ListThemes/GetThemeCSS/LoadSettings/SaveSettings）
+│   │   │   │   └── export.js      # 数据导出 API（previewExport + startExport + cancelExport）
 │   │   │   │   └── normalize.js   # 响应数据归一化工具
 │   │   │   ├── i18n/            # 多语言支持（5 种语言，300+ 翻译 key）
 │   │   │   │   ├── index.js     # locale store + t() 翻译函数 + 语言检测
@@ -63,7 +64,7 @@ idb_desktop/
 │   │   │   │   ├── en.js        # English
 │   │   │   │   ├── ja.js        # 日本語
 │   │   │   │   └── ru.js        # Русский
-│   │   │   ├── components/      # 20 个 Svelte 组件
+│   │   │   ├── components/      # 22 个 Svelte 组件
 │   │   │   │   ├── MdButton.svelte         # MD3 通用按钮组件（6 种 variant × 3 种 size）
 │   │   │   │   ├── ConnectionForm.svelte  # 连接管理界面
 │   │   │   │   ├── Sidebar.svelte         # 数据库树形浏览器
@@ -74,6 +75,8 @@ idb_desktop/
 │   │   │   │   ├── LuaEditor.svelte       # Monaco Lua 编辑器封装（Lua 关键字 + 标准库 + 造数内置函数 + 数据库表/列名补全，StyLua 格式化 Alt+Shift+F）
 │   │   │   │   ├── DataGeneratorPanel.svelte # 造数工作台（单表 + Lua 脚本 + 流式 SQL 日志 + 按表名正则统计）
 │   │   │   │   ├── DataGenHelp.svelte     # 造数工作台帮助弹窗（内置函数 + 6 个示例）
+│   │   │   │   ├── DataExportPanel.svelte # 数据导出工作台（SQL 预览 + 5 种格式导出 + 流式进度）
+│   │   │   │   ├── TaskCenter.svelte      # 任务中心（导出任务列表 + 进度 + 停止任务）
 │   │   │   │   ├── UserPanel.svelte       # 用户与权限管理
 │   │   │   │   ├── SettingsPanel.svelte   # 设置面板（语言/主题/JVM内存/系统信息，支持路由和全局 overlay 两种模式）
 │   │   │   │   ├── TablePanel.svelte      # 表结构编辑器（ALTER TABLE，支持改名）
@@ -178,7 +181,7 @@ idb_desktop/
 ```json
 {
   "id": "uuid-v4-string",
-  "category": "SCHEMA | USER | TABLE | DATA | SQL",
+  "category": "SCHEMA | USER | TABLE | DATA | SQL | EXPORT",
   "action": "LIST | CREATE | UPDATE | DELETE | EXECUTE | GET_DDL | GENERATE",
   "connection": {
     "driver": "Mysql | Postgres",
@@ -246,6 +249,8 @@ idb_desktop/
 | DATA | DELETE | `{ tableName, where: {...} }` | 条件删除；返回 `{ affectedRows }` |
 | DATA | GENERATE | `{ luaVersion?, tables: [{ count, script }] }` | **造数**：通过嵌入式 LuaJIT 脚本批量生成数据。`luaVersion` 选 `'luajit'`（默认）/ `'5.1'`-`'5.5'`。`tables` 按数组顺序逐表执行，每张表用其 `script` 调用引擎内置 Lua 函数（`insert`/`lastId`/`random_*`）逐条写库。流式响应每张表完成时推一条 `{table, inserted, total, index, sql}`，末行 `end:true`。详见 [§7.3 数据生成引擎](#73-数据生成引擎jvm-造数) |
 | SQL | EXECUTE | `{ sql }` | 非 SELECT：返回 `{ affectedRows }`；SELECT：自动触发流式多行响应（`stream:true`） |
+| EXPORT | PREVIEW | `{ sql }` | 预览 SQL 查询结果（前 100 行），用于确认导出内容 |
+| EXPORT | EXPORT | `{ sql, outputDir, fileName, format, tableName?, fetchSize? }` | **数据导出**：基于自定义 SQL 的 5 种格式导出，独立子进程运行。`format` 支持 `CSV`、`JSON_LINES`、`SQL_INSERT`、`EXCEL`、`PARQUET`。流式进度响应每行推送 `{exportedRows, columnCount, completed}`，末行 `end:true`；停止导出传 `stopExportId`。详见 [§7.4 数据导出引擎](#74-数据导出引擎) |
 
 > 退出信号：向 stdin 写一行 `CMD_EXIT`（或关闭 stdin），引擎即自清理退出。所有日志写 stderr，绝不污染 stdout 协议流。
 
@@ -388,6 +393,50 @@ type Engine struct {
   {"count":100,"script":"local catId = lastId()\nfor i = 1, count do\n  insert('products', {\n    category_id = random_int(catId - 9, catId),\n    name = '商品_' .. random_string(6)\n  })\nend"}
 ]}
 ```
+
+### 7.4 数据导出引擎（JVM 导出）
+
+`EXPORT / EXPORT` action 基于自定义 SQL 的 5 种格式数据导出，**独立子进程运行**，全链路 JDBC 游标流式逐行处理，内存占用与数据总量无关，支持超大数据量稳定导出。
+
+> **子进程隔离**：导出任务运行在独立的 JVM 子进程中（通过 `ExportProcessManager` 管理），即使导出千万级数据也不会导致主进程 OOM。主进程关闭时子进程自动停止。
+
+**支持格式**：
+- **CSV**：UTF-8 BOM 头保证 Excel 打开中文不乱码，自动处理字段转义
+- **JSON Lines**：每行一个独立 JSON 对象，零新增依赖
+- **SQL INSERT**：逐行生成 INSERT 语句，自动处理单引号转义
+- **Excel**：POI SXSSF 流式 API，100 万行/Sheet 自动分页，1000 行内存窗口
+- **Parquet**：动态 Schema，列式存储压缩
+
+**请求**：
+```json
+{"id":"exp1","category":"EXPORT","action":"EXPORT","connection":{"driver":"Mysql","host":"localhost","port":3306,"user":"root","password":"pass","database":"test_db"},"payload":{"sql":"SELECT * FROM users","outputDir":"D:/exports","fileName":"users_2024","format":"CSV","fetchSize":1000}}
+```
+
+字段说明：
+- `sql`（必填）— 自定义 SELECT SQL
+- `outputDir`（必填）— 输出目录（不存在自动创建）
+- `fileName`（必填）— 文件名前缀（不含扩展名）
+- `format`（必填）— `CSV` / `JSON_LINES` / `SQL_INSERT` / `EXCEL` / `PARQUET`
+- `tableName` — SQL_INSERT 必填，用于生成 INSERT 语句前缀
+- `fetchSize` — JDBC 游标拉取批次大小，默认 1000
+
+**流式进度响应**（每行一条 JSON）：
+```
+{"id":"exp1","success":true,"stream":true,"end":false,"data":{"exportedRows":1000,"columnCount":5,"completed":false}}
+{"id":"exp1","success":true,"stream":true,"end":false,"data":{"exportedRows":2000,"columnCount":5,"completed":false}}
+...
+{"id":"exp1","success":true,"stream":true,"end":true,"data":null}
+```
+
+**停止导出**：
+导出任务运行在独立子进程中，支持手动停止。在新的 EXPORT 请求中指定 `stopExportId` 即可取消对应的导出任务：
+```json
+{"id":"exp-stop","category":"EXPORT","action":"EXPORT","connection":{...},"payload":{"stopExportId":"exp1"}}
+```
+
+**数据库适配**：
+- **MySQL**：自动设置 `fetchSize = Integer.MIN_VALUE` 启用流式游标
+- **PostgreSQL**：自动关闭 `autoCommit` 启用服务端游标，导出完成后自动恢复
 
 ---
 
@@ -637,6 +686,52 @@ if (m) latestCounts[m[1]] = (latestCounts[m[1]] || 0) + 1;
 - 包含内置函数详解 + 6 个 Lua 脚本示例（单表基础 / 随机函数 / 外键引用 / 同脚本多表 / 电商订单 / Lua 高级特性）；
 - 全部 34 个 `dg.help.*` 描述性文本在 5 个语言文件中翻译。
 
+### 8.12 数据导出工作台（Data Export）
+
+[DataExportPanel.svelte](frontend/src/lib/components/DataExportPanel.svelte) + [TaskCenter.svelte](frontend/src/lib/components/TaskCenter.svelte) 共同构成完整的数据导出 UI。
+
+**Tab 集成**：
+- 第六种 tab kind `'export'`，id 格式 `export:{schema}`，每个 schema 一个 tab；
+- 第七种 tab kind `'tasks'`，全局唯一的任务中心 tab；
+- header 按钮 "导出" 和 "任务" 直接打开对应 tab。
+
+**导出配置 UI**：
+- 顶部工具栏：连接信息 + 格式下拉（CSV/JSON Lines/SQL INSERT/Excel/Parquet）+ 输出目录 + 文件名前缀；
+- SQL_INSERT 格式额外显示表名输入框；
+- SQL 编辑器（Monaco，SQL 语法 + 补全）；
+- 预览区（可折叠，预览前 100 行）；
+- 进度区（流式日志 + 已导出行数）。
+
+**API 入口**：[api/export.js](frontend/src/lib/api/export.js)：
+```js
+previewExport(conn, sql, limit)    // 预览（前 100 行）
+startExport(conn, payload, onProgress)  // 开始导出，流式回调
+cancelExport(conn, exportId)       // 停止导出
+```
+
+**任务状态共享**：
+- 导出任务通过 `localStorage` 持久化，key 为 `idb_export_tasks`；
+- DataExportPanel 提交任务时保存到 localStorage；
+- TaskCenter 读取 localStorage 并每 5 秒刷新；
+- 任务状态：`running` / `completed` / `cancelled` / `error`。
+
+**前端状态结构**（localStorage）：
+```js
+{
+  id: string,           // 任务 ID
+  sql: string,          // SQL 摘要
+  format: string,       // 导出格式
+  fileName: string,     // 文件名前缀
+  outputDir: string,    // 输出目录
+  connKey: string,      // 连接键（用于过滤）
+  status: string,       // running|completed|cancelled|error
+  exportedRows: number,
+  columnCount: number,
+  startedAt: number,    // timestamp
+  error?: string
+}
+```
+
 ---
 
 ## 9. 安全与边界规范
@@ -728,3 +823,4 @@ cd frontend && npm run lint
 | Makefile 自动化 | ✅ 双平台构建 + Azul Zulu JRE 21 自动下载 + deps 依赖自检 |
 | 虚拟滚动 | ✅ DataGrid + SqlConsole 共享虚拟滚动机制（spacer 上下定位 + keyed DOM 复用 + 流式过程即时激活 + 列宽测量锁定） |
 | 造数工作台（GENERATE） | ✅ 引擎侧 LuaJIT 沙箱 + 内置 `insert`/`lastId`/`random_*` 函数 + 多表按序 + 流式进度；前端 Monaco Lua 编辑器（关键字 + 标准库 + 造数内置 + 数据库表/列名补全 + StyLua WASM 格式化）+ 节流 SQL 日志 + 按表名正则统计 + 5 语言完整翻译的帮助弹窗 |
+| 数据导出工作台（EXPORT） | ✅ 5 种格式（CSV/JSON Lines/SQL INSERT/Excel/Parquet）+ SQL 预览 + 流式进度 + 任务持久化（localStorage）+ 任务中心（进度列表 + 停止任务） |

@@ -120,6 +120,17 @@ func (a *App) IsDevMode() bool {
 	return isDevBuild()
 }
 
+// PickDirectory 打开系统目录选择对话框，返回选中的路径；取消则返回空串。
+func (a *App) PickDirectory(title string) string {
+	path, err := wruntime.OpenDirectoryDialog(a.ctx, wruntime.OpenDialogOptions{
+		Title: title,
+	})
+	if err != nil {
+		return ""
+	}
+	return path
+}
+
 // RestartEngine 关闭当前引擎并以新配置重启（用于 JVM 内存变更后）。
 func (a *App) RestartEngine() error {
 	// 关闭旧引擎

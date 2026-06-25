@@ -42,6 +42,10 @@ export function LoadSettings() {
   return window['go']['main']['App']['LoadSettings']();
 }
 
+export function PickDirectory(arg1) {
+  return window['go']['main']['App']['PickDirectory'](arg1);
+}
+
 export function RestartEngine() {
   return window['go']['main']['App']['RestartEngine']();
 }

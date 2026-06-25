@@ -8,6 +8,7 @@
 
 ## 特色
 
+- **数据导出工作台** — 基于自定义 SQL 的 5 种格式导出（CSV/JSON Lines/SQL INSERT/Excel/Parquet），独立子进程运行，流式进度显示，任务中心支持进度查看和停止
 - **造数工作台** — Lua 脚本驱动批量造数，内置 11 个随机函数 + 多 Lua 版本支持 + Monaco 编辑器（关键字/标准库/数据库元数据补全）+ StyLua 格式化 + 流式 SQL 日志
 - **函数与存储过程管理** — 查看/创建/编辑/删除 Function、Procedure、Trigger；plpgsql 语法补全；调用执行；EXPLAIN 调试
 - **数据浏览与编辑** — 三级树形浏览 + 分页/全量流式 + 虚拟滚动 + 行级 CRUD + 列内筛选
@@ -93,7 +94,7 @@ idb_desktop/
     └── src/
         ├── lib/api/                    # 引擎 API 层
         ├── lib/i18n/                   # 5 种语言
-        ├── lib/components/            # 20 个 Svelte 组件
+        ├── lib/components/            # 22 个 Svelte 组件
         └── routes/
             ├── +page.svelte           # 连接选择
             ├── setup/                 # 首次引导

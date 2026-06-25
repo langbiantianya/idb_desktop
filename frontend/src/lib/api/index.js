@@ -111,9 +111,10 @@ export async function invoke(category, action, connection, payload = {}) {
  * @param {ConnectionConfig} connection
  * @param {Record<string, unknown>} payload
  * @param {(data: unknown) => void} onRow - 每收到一行流式数据时回调
+ * @param {(data: unknown) => void} [onEnd] - 结束回调（stream end 事件触发，接收完整的结束响应数据）
  * @returns {Promise<Response>}
  */
-export async function invokeStreaming(category, action, connection, payload, onRow) {
+export async function invokeStreaming(category, action, connection, payload, onRow, onEnd) {
 	/** @type {Request} */
 	const conn = { ...connection };
 	const schema = conn._schema;
@@ -127,7 +128,6 @@ export async function invokeStreaming(category, action, connection, payload, onR
 
 	const req = { id: uuid(), category, action, connection: conn, payload };
 	const id = req.id;
-	console.log('[invokeStreaming] sending request', { id, category, action, payload });
 
 	const streamEventName = `engine:stream:${id}`;
 	const endEventName = `engine:stream-end:${id}`;
@@ -142,19 +142,31 @@ export async function invokeStreaming(category, action, connection, payload, onR
 			resolve(resp);
 		};
 
-		// 注册流式 end 事件
-		EventsOnce(endEventName, (/** @type {string} */ raw) => {
+		// 注册流式 end 事件（使用 EventsOn 而非 EventsOnce，因为 end 消息可能和 stream 消息在同一个批次）
+		let endReceived = false;
+		const handleEndEvent = (/** @type {string} */ raw) => {
+			if (endReceived) return;
+			endReceived = true;
+			EventsOff(endEventName);
 			try {
 				const parsed = JSON.parse(raw);
+				// 调用 onEnd 回调，传入完整的结束响应数据
+				if (typeof onEnd === 'function') {
+					onEnd(parsed);
+				}
 				if (parsed.success === false) {
 					safeResolve({ id, success: false, error: parsed.error ?? 'stream error', data: null });
 				} else {
 					safeResolve({ id, success: true, error: null, data: null });
 				}
 			} catch {
+				if (typeof onEnd === 'function') {
+					onEnd({ error: 'invalid stream-end response' });
+				}
 				safeResolve({ id, success: false, error: 'invalid stream-end response', data: null });
 			}
-		});
+		};
+		EventsOn(endEventName, handleEndEvent);
 
 		// 注册流式数据行事件（Go batcher 可能发送单条字符串或字符串数组）
 		EventsOn(streamEventName, (/** @type {string | string[]} */ raw) => {
@@ -174,7 +186,6 @@ export async function invokeStreaming(category, action, connection, payload, onR
 		// 发送请求；Go 端 FetchDatabaseDataStreaming 等同于普通 Invoke 的初始化确认
 		FetchDatabaseDataStreaming(JSON.stringify(req))
 			.then((raw) => {
-				console.log('[invokeStreaming] Go response', raw);
 				try {
 					const resp = JSON.parse(raw);
 					if (!resp.success) {

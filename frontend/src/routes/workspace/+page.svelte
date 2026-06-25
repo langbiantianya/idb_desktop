@@ -7,6 +7,7 @@
 	import SqlConsole from '$lib/components/SqlConsole.svelte';
 	import UserPanel from '$lib/components/UserPanel.svelte';
 	import DataGeneratorPanel from '$lib/components/DataGeneratorPanel.svelte';
+	import DataExportPanel from '$lib/components/DataExportPanel.svelte';
 	import FunctionPanel from '$lib/components/FunctionPanel.svelte';
 	import TablePanel from '$lib/components/TablePanel.svelte';
 	import TableEditor from '$lib/components/TableEditor.svelte';
@@ -24,6 +25,7 @@
 	 *   | { id: string; kind: 'users'; title: string }
 	 *   | { id: string; database: string; kind: 'generator'; schema: string; title: string }
 	 *   | { id: string; database: string; kind: 'routine'; schema: string; name: string; routineType: string; isNew?: boolean; title: string }
+	 *   | { id: string; database: string; kind: 'export'; schema: string; title: string }
 	 * } Tab
 	 */
 
@@ -184,6 +186,16 @@
 		activeTabId = id;
 	}
 
+	function openExportTab() {
+		if (!selectedSchema) return;
+		const db = baseConn?.driver === 'Mysql' ? '' : selectedDatabase;
+		const id = baseConn?.driver === 'Mysql' ? `export:${selectedSchema}` : `export:${db}:${selectedSchema}`;
+		if (!tabs.find((t) => t.id === id)) {
+			tabs = [...tabs, { id, database: db, kind: 'export', schema: selectedSchema, title: get(t)('export.tab_title', { schema: selectedSchema }) }];
+		}
+		activeTabId = id;
+	}
+
 	function closeTab(id, evt) {
 		evt?.stopPropagation();
 		const idx = tabs.findIndex((t) => t.id === id);
@@ -307,6 +319,9 @@
 		<MdButton variant="text" onclick={() => openGeneratorTab()} disabled={!selectedSchema}>
 			{$t('workspace.data_generator')}
 		</MdButton>
+		<MdButton variant="text" onclick={() => openExportTab()} disabled={!selectedSchema}>
+			{$t('workspace.data_export')}
+		</MdButton>
 		<div class="flex items-center gap-1">
 			<ThemeToggle />
 			<MdButton variant="icon" onclick={openSettings} title={$t('workspace.settings')}>
@@ -388,6 +403,8 @@
 								<span style="color: var(--md-tertiary);">⚡</span>
 							{:else if tab.kind === 'routine'}
 								<span style="color: var(--md-tertiary);">ƒ</span>
+							{:else if tab.kind === 'export'}
+								<span style="color: var(--md-secondary);">↓</span>
 							{:else}
 								<span style="color: var(--md-secondary);">◐</span>
 							{/if}
@@ -444,6 +461,11 @@
 							{@const sc = connFor(tab.database, tab.schema)}
 							{#if sc}
 								<FunctionPanel schemaConn={sc} name={tab.name} routineType={tab.routineType} schema={tab.schema} isNew={tab.isNew ?? false} />
+							{/if}
+						{:else if tab.kind === 'export'}
+							{@const sc = connFor(tab.database, tab.schema)}
+							{#if sc}
+								<DataExportPanel schemaConn={sc} />
 							{/if}
 						{/if}
 					</div>
