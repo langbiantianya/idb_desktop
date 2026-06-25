@@ -14,7 +14,7 @@
 	let { schemaConn } = $props();
 
 	// ── 配置 ──
-	let sql = $state('SELECT * FROM users LIMIT 1000');
+	let sql = $state('');
 	let format = $state('CSV');
 	let outputDir = $state('');
 	let fileName = $state(new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14));
@@ -371,19 +371,6 @@
 		class="flex items-center gap-3 px-3 py-1.5"
 		style="border-top: 1px solid var(--md-outline-variant);"
 	>
-		<label class="flex items-center gap-1">
-			<span class="text-[11px] whitespace-nowrap" style="color: var(--md-on-surface-variant);"
-				>{$t('export.format')}</span
-			>
-			<select
-				class="cursor-pointer rounded border px-1 py-0.5 font-mono text-[11px] outline-none"
-				style="border-color: var(--md-outline-variant); background: var(--md-surface-container-lowest); color: var(--md-on-surface);"
-				bind:value={format}
-				disabled={running}
-			>
-				{#each FORMATS as opt}<option value={opt.value}>{opt.label}</option>{/each}
-			</select>
-		</label>
 		<label class="flex min-w-0 flex-1 items-center gap-1">
 			<span class="text-[11px] whitespace-nowrap" style="color: var(--md-on-surface-variant);"
 				>{$t('export.output_dir')}</span
@@ -417,6 +404,19 @@
 				placeholder="users"
 				disabled={running}
 			/>
+		</label>
+		<label class="flex items-center gap-1">
+			<span class="text-[11px] whitespace-nowrap" style="color: var(--md-on-surface-variant);"
+				>{$t('export.format')}</span
+			>
+			<select
+				class="cursor-pointer rounded border px-1 py-0.5 font-mono text-[11px] outline-none"
+				style="border-color: var(--md-outline-variant); background: var(--md-surface-container-lowest); color: var(--md-on-surface);"
+				bind:value={format}
+				disabled={running}
+			>
+				{#each FORMATS as opt}<option value={opt.value}>{opt.label}</option>{/each}
+			</select>
 		</label>
 		{#if format === 'SQL_INSERT'}
 			<label class="flex items-center gap-1">

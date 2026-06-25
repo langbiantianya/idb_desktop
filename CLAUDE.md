@@ -75,8 +75,7 @@ idb_desktop/
 │   │   │   │   ├── LuaEditor.svelte       # Monaco Lua 编辑器封装（Lua 关键字 + 标准库 + 造数内置函数 + 数据库表/列名补全，StyLua 格式化 Alt+Shift+F）
 │   │   │   │   ├── DataGeneratorPanel.svelte # 造数工作台（单表 + Lua 脚本 + 流式 SQL 日志 + 按表名正则统计）
 │   │   │   │   ├── DataGenHelp.svelte     # 造数工作台帮助弹窗（内置函数 + 6 个示例）
-│   │   │   │   ├── DataExportPanel.svelte # 数据导出工作台（SQL 预览 + 5 种格式导出 + 流式进度）
-│   │   │   │   ├── TaskCenter.svelte      # 任务中心（导出任务列表 + 进度 + 停止任务）
+│   │   │   │   ├── DataExportPanel.svelte # 数据导出工作台（SQL 预览 + 5 种格式导出 + Tab 切换预览/日志 + 流式进度 + 停止导出）
 │   │   │   │   ├── UserPanel.svelte       # 用户与权限管理
 │   │   │   │   ├── SettingsPanel.svelte   # 设置面板（语言/主题/JVM内存/系统信息，支持路由和全局 overlay 两种模式）
 │   │   │   │   ├── TablePanel.svelte      # 表结构编辑器（ALTER TABLE，支持改名）
@@ -425,7 +424,7 @@ type Engine struct {
 {"id":"exp1","success":true,"stream":true,"end":false,"data":{"exportedRows":1000,"columnCount":5,"completed":false}}
 {"id":"exp1","success":true,"stream":true,"end":false,"data":{"exportedRows":2000,"columnCount":5,"completed":false}}
 ...
-{"id":"exp1","success":true,"stream":true,"end":true,"data":null}
+{"id":"exp1","success":true,"stream":true,"end":true,"data":{"exportedRows":13308,"columnCount":5,"completed":true,"filePath":"C:\\Users\\...\\users_2024.csv"}}
 ```
 
 **停止导出**：
@@ -688,48 +687,32 @@ if (m) latestCounts[m[1]] = (latestCounts[m[1]] || 0) + 1;
 
 ### 8.12 数据导出工作台（Data Export）
 
-[DataExportPanel.svelte](frontend/src/lib/components/DataExportPanel.svelte) + [TaskCenter.svelte](frontend/src/lib/components/TaskCenter.svelte) 共同构成完整的数据导出 UI。
+[DataExportPanel.svelte](frontend/src/lib/components/DataExportPanel.svelte) 构成数据导出 UI。
 
 **Tab 集成**：
 - 第六种 tab kind `'export'`，id 格式 `export:{schema}`，每个 schema 一个 tab；
-- 第七种 tab kind `'tasks'`，全局唯一的任务中心 tab；
-- header 按钮 "导出" 和 "任务" 直接打开对应 tab。
+- header 按钮 "导出" 直接打开 export tab。
 
 **导出配置 UI**：
 - 顶部工具栏：连接信息 + 格式下拉（CSV/JSON Lines/SQL INSERT/Excel/Parquet）+ 输出目录 + 文件名前缀；
 - SQL_INSERT 格式额外显示表名输入框；
 - SQL 编辑器（Monaco，SQL 语法 + 补全）；
-- 预览区（可折叠，预览前 100 行）；
-- 进度区（流式日志 + 已导出行数）。
+- 下方 Tab 切换区：预览 / 日志，点击切换；
+- 运行按钮和停止按钮切换显示。
 
 **API 入口**：[api/export.js](frontend/src/lib/api/export.js)：
 ```js
-previewExport(conn, sql, limit)    // 预览（前 100 行）
-startExport(conn, payload, onProgress)  // 开始导出，流式回调
+startExport(conn, payload, onProgress, onEnd)  // 开始导出，流式回调 + 结束回调
 cancelExport(conn, exportId)       // 停止导出
 ```
 
-**任务状态共享**：
-- 导出任务通过 `localStorage` 持久化，key 为 `idb_export_tasks`；
-- DataExportPanel 提交任务时保存到 localStorage；
-- TaskCenter 读取 localStorage 并每 5 秒刷新；
-- 任务状态：`running` / `completed` / `cancelled` / `error`。
+**流式响应处理**：
+- `onProgress`：每条流式响应回调，显示原始 JSON 数据和已导行数；
+- `onEnd`：stream-end 事件回调，接收完整 envelope，判断 `completed`、`filePath`、`error` 显示成功/失败提示。
 
-**前端状态结构**（localStorage）：
-```js
-{
-  id: string,           // 任务 ID
-  sql: string,          // SQL 摘要
-  format: string,       // 导出格式
-  fileName: string,     // 文件名前缀
-  outputDir: string,    // 输出目录
-  connKey: string,      // 连接键（用于过滤）
-  status: string,       // running|completed|cancelled|error
-  exportedRows: number,
-  columnCount: number,
-  startedAt: number,    // timestamp
-  error?: string
-}
+**结束响应格式**：
+```json
+{"id":"exp1","success":true,"stream":true,"end":true,"data":{"exportedRows":13308,"columnCount":5,"completed":true,"filePath":"C:\\Users\\...\\users_2024.csv"}}
 ```
 
 ---
