@@ -4,6 +4,9 @@
 	import { ok, err } from '$lib/stores/toasts.js';
 	import { startExport, cancelExport } from '$lib/api/export.js';
 	import { pickDirectory } from '$lib/wailsDialog.js';
+	import { listSchemas, listTables, listColumns } from '$lib/api';
+	import { asStringList, asTableList, asColumnList } from '$lib/api/normalize.js';
+	import { getCompletionItems } from '$lib/sqlCompletion.js';
 	import SqlEditor from './SqlEditor.svelte';
 	import { format as formatSql } from 'sql-formatter';
 	import { invokeStreaming } from '$lib/api/index.js';
@@ -39,6 +42,178 @@
 	let logEl = $state(/** @type {HTMLDivElement | null} */ (null));
 	let logBuf = /** @type {string[]} */ ([]);
 	const MAX_LOG = 500;
+
+	// ── SQL 补全元数据缓存 ──
+	let schemas = $state(/** @type {string[]} */ ([]));
+	let tablesBySchema = $state(/** @type {Record<string, string[]>} */ ({}));
+	let columnsByQualifiedTable = $state(/** @type {Record<string, string[]>} */ ({}));
+	let lastLoadKey = '';
+
+	// ── 加载初始元数据 ──
+	$effect(() => {
+		const conn = schemaConn;
+		if (!conn) return;
+		const key = `${conn.driver}|${conn.host}|${conn.port}|${conn.user}|${conn.database}|${conn._schema || ''}`;
+		if (key === lastLoadKey) return;
+		lastLoadKey = key;
+		void loadInitialMeta(conn);
+	});
+
+	/** @param {ConnectionConfig} conn */
+	async function loadInitialMeta(conn) {
+		try {
+			// PostgreSQL: 从 connection.database 加载该库的 schema 列表
+			if (conn.driver === 'Postgresql') {
+				const sResp = await listSchemas(conn, { database: conn.database });
+				if (sResp.success) schemas = asStringList(sResp.data);
+			} else {
+				const sResp = await listSchemas(conn);
+				if (sResp.success) schemas = asStringList(sResp.data);
+			}
+		} catch (_) { /* 忽略 */ }
+
+		// 当前 schema：PG 取 _schema，MySQL 取 database
+		const cur = conn.driver === 'Postgresql' ? (conn._schema || '') : conn.database;
+		if (cur && !tablesBySchema[cur]) {
+			try {
+				const tResp = await listTables(conn);
+				if (tResp.success) {
+					const list = asTableList(tResp.data).map((t) => t.name);
+					tablesBySchema = { ...tablesBySchema, [cur]: list };
+				}
+			} catch (_) { /* 忽略 */ }
+		}
+	}
+
+	/** @param {string} schema */
+	async function tablesIn(schema) {
+		if (tablesBySchema[schema]) return tablesBySchema[schema];
+		try {
+			const conn = schemaConn.driver === 'Postgresql'
+				? { ...schemaConn, _schema: schema }
+				: { ...schemaConn, database: schema };
+			const r = await listTables(conn);
+			if (!r.success) return [];
+			const list = asTableList(r.data).map((t) => t.name);
+			tablesBySchema = { ...tablesBySchema, [schema]: list };
+			return list;
+		} catch (_) {
+			return [];
+		}
+	}
+
+	/** @param {string} schema @param {string} table */
+	async function columnsOf(schema, table) {
+		const key = `${schema}.${table}`;
+		if (columnsByQualifiedTable[key]) return columnsByQualifiedTable[key];
+		try {
+			const conn = schemaConn.driver === 'Postgresql'
+				? { ...schemaConn, _schema: schema }
+				: { ...schemaConn, database: schema };
+			const r = await listColumns(conn, table);
+			if (!r.success) return [];
+			const list = asColumnList(r.data).map((c) => c.name);
+			columnsByQualifiedTable = { ...columnsByQualifiedTable, [key]: list };
+			return list;
+		} catch (_) {
+			return [];
+		}
+	}
+
+	/**
+	 * @param {string} text
+	 * @returns {{ schema?: string; table: string; alias?: string }[]}
+	 */
+	function parseReferencedTables(text) {
+		const refs = [];
+		const stripped = text.replace(/'(?:''|[^'])*'/g, ' ').replace(/"(?:""|[^"])*"/g, ' ');
+		const re = /\b(?:from|join|update|into)\s+(?:([\w$]+)\s*\.\s*)?([\w$]+)(?:\s+(?:as\s+)?([\w$]+))?/gi;
+		const stop = new Set([
+			'where', 'on', 'group', 'order', 'having', 'join', 'inner', 'left',
+			'right', 'cross', 'full', 'outer', 'set', 'values', 'select', 'limit',
+			'offset', 'using', 'union', 'as', 'and', 'or'
+		]);
+		let m;
+		while ((m = re.exec(stripped)) !== null) {
+			const schema = m[1];
+			const table = m[2];
+			const aliasRaw = m[3];
+			const alias = aliasRaw && !stop.has(aliasRaw.toLowerCase()) ? aliasRaw : undefined;
+			refs.push(schema ? { schema, table, alias } : { table, alias });
+		}
+		return refs;
+	}
+
+	/**
+	 * @typedef {Object} Suggestion
+	 * @property {string} label
+	 * @property {'schema' | 'table' | 'column' | 'keyword' | 'function'} kind
+	 * @property {string} [detail]
+	 */
+
+	/**
+	 * @param {{ word: string; prevToken: string; qualifier: string | null }} ctx
+	 * @returns {Promise<Suggestion[]>}
+	 */
+	async function getSuggestions(ctx) {
+		const { prevToken, qualifier } = ctx;
+		const items = /** @type {Suggestion[]} */ ([]);
+		const cur = (schemaConn.driver === 'Postgresql' ? (schemaConn._schema || '') : schemaConn.database) || '';
+
+		if (qualifier) {
+			if (schemas.includes(qualifier)) {
+				const tables = await tablesIn(qualifier);
+				for (const t of tables) items.push({ label: t, kind: 'table', detail: `${qualifier}.${t}` });
+				return items;
+			}
+			const refs = parseReferencedTables(sql);
+			const ref = refs.find((r) => r.alias === qualifier || r.table === qualifier);
+			if (ref) {
+				const sch = ref.schema || cur;
+				if (sch) {
+					const cols = await columnsOf(sch, ref.table);
+					const prefix = ref.alias || ref.table;
+					for (const c of cols) items.push({ label: c, kind: 'column', detail: `${prefix}.${c}` });
+				}
+			}
+			return items;
+		}
+
+		const tableSlots = new Set(['from', 'join', 'update', 'into']);
+		if (tableSlots.has(prevToken)) {
+			if (cur) {
+				const tables = await tablesIn(cur);
+				for (const t of tables) items.push({ label: t, kind: 'table', detail: cur });
+			}
+			for (const s of schemas) {
+				if (s === cur) continue;
+				items.push({ label: s, kind: 'schema', detail: 'database' });
+			}
+		} else {
+			const refs = parseReferencedTables(sql);
+			const seen = new Set();
+			for (const r of refs) {
+				const sch = r.schema || cur;
+				if (!sch) continue;
+				const cols = await columnsOf(sch, r.table);
+				const prefix = r.alias || r.table;
+				for (const c of cols) {
+					const key = `${prefix}::${c}`;
+					if (seen.has(key)) continue;
+					seen.add(key);
+					items.push({ label: c, kind: 'column', detail: `${prefix}.${c}` });
+				}
+			}
+			if (cur && tablesBySchema[cur]) {
+				for (const t of tablesBySchema[cur]) items.push({ label: t, kind: 'table', detail: cur });
+			}
+		}
+
+		const { keywords, functions } = getCompletionItems(schemaConn.driver);
+		for (const f of functions) items.push({ label: f, kind: 'function' });
+		for (const k of keywords) items.push({ label: k, kind: 'keyword' });
+		return items;
+	}
 
 	// ── 虚拟滚动 ──
 	const VS_THRESHOLD = 500;
@@ -169,8 +344,9 @@
 		vsReset();
 		const accRows = [];
 		const colSet = new Set();
+		let previewError = /** @type {string | null} */ (null);
 		try {
-			await invokeStreaming('SQL', 'EXECUTE', schemaConn, { sql: addLimit(sql, 1000) }, (data) => {
+			const resp = await invokeStreaming('SQL', 'EXECUTE', schemaConn, { sql: addLimit(sql, 1000) }, (data) => {
 				if (!data || typeof data !== 'object') return;
 				const rows = Array.isArray(data.rows) ? data.rows : [];
 				for (const row of rows) {
@@ -180,7 +356,24 @@
 					}
 				}
 				if (!vsActive && accRows.length > VS_THRESHOLD) vsActive = true;
+			}, (endData) => {
+				// 处理流结束时的错误
+				if (!endData || typeof endData !== 'object') return;
+				const d = /** @type {Record<string, unknown>} */ (endData);
+				if (d.success === false && d.error) {
+					previewError = /** @type {string} */ (d.error);
+				}
 			});
+			// 检查流初始化错误
+			if (!resp.success) {
+				previewError = resp.error ?? get(t)('export.preview_failed');
+			}
+			if (previewError) {
+				err(previewError);
+				previewRows = [];
+				previewColumns = [];
+				return;
+			}
 			previewRows = accRows;
 			previewColumns = [...colSet];
 			if (previewRows.length > VS_THRESHOLD && !vsActive) {
@@ -299,12 +492,9 @@
 		<h2 class="shrink-0 text-sm font-semibold" style="color: var(--md-on-surface);">
 			{$t('export.title')}
 		</h2>
-		<span class="shrink-0 font-mono text-[11px]" style="color: var(--md-on-surface-variant);">
-			{schemaConn.driver}://{schemaConn.host}:{schemaConn.port}/{schemaConn.driver === 'Postgresql'
-				? schemaConn._schema || schemaConn.database || '—'
-				: schemaConn.database || '—'}
+		<span class="flex-1 truncate font-mono text-[11px]" style="color: var(--md-on-surface-variant);">
+			{schemaConn.driver}://{schemaConn.host}:{schemaConn.port}/{schemaConn.database || '—'}{schemaConn.driver === 'Postgresql' ? '/' + (schemaConn._schema || 'public') : ''}
 		</span>
-		<div class="flex-1"></div>
 		<div class="flex shrink-0 items-center gap-1.5">
 			<button
 				type="button"
@@ -443,6 +633,7 @@
 		onValueChange={(v) => (sql = v)}
 		onCtrlEnter={doExport}
 		placeholder={$t('export.sql_placeholder')}
+		{getSuggestions}
 	/>
 </div>
 

@@ -550,45 +550,43 @@
 
 <section class="flex h-full flex-col">
 	<header
-		class="flex items-center justify-between px-3 py-2"
+		class="flex items-center px-3 py-2"
 		style="background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant);"
 	>
-		<h2 class="text-sm font-medium" style="color: var(--md-on-surface);">{$t('sql.title')}</h2>
-		<div class="flex items-center gap-3">
-			<div class="text-xs font-mono" style="color: var(--md-on-surface-variant);">
-				{schemaConn.driver}://{schemaConn.host}:{schemaConn.port}/{schemaConn.driver === 'Postgresql' ? (schemaConn._schema || schemaConn.database || $t('sql.no_db')) : (schemaConn.database || $t('sql.no_db'))}
-			</div>
-			<div class="flex items-center gap-1">
-				<button
-					type="button"
-					class="sql-tool-btn"
-					onclick={format}
-					disabled={!sql.trim()}
-					title={$t('sql.format_tooltip')}
-				>
-					{$t('sql.format')}
-				</button>
-				<button
-					type="button"
-					class="sql-run-btn"
-					onclick={run}
-					disabled={pending || !sql.trim()}
-					title={$t('sql.run_tooltip')}
-					aria-label={$t('sql.run_aria')}
-				>
-					{#if pending}
-						<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-							<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="40" stroke-dashoffset="20">
-								<animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.9s" repeatCount="indefinite" />
-							</circle>
-						</svg>
-					{:else}
-						<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-							<path d="M8 5v14l11-7z" fill="currentColor" />
-						</svg>
-					{/if}
-				</button>
-			</div>
+		<h2 class="shrink-0 text-sm font-medium" style="color: var(--md-on-surface);">{$t('sql.title')}</h2>
+		<span class="ml-3 flex-1 truncate text-xs font-mono" style="color: var(--md-on-surface-variant);">
+			{schemaConn.driver}://{schemaConn.host}:{schemaConn.port}/{schemaConn.database || '—'}{schemaConn.driver === 'Postgresql' ? '/' + (schemaConn._schema || 'public') : ''}
+		</span>
+		<div class="ml-3 flex shrink-0 items-center gap-1">
+			<button
+				type="button"
+				class="sql-tool-btn"
+				onclick={format}
+				disabled={!sql.trim()}
+				title={$t('sql.format_tooltip')}
+			>
+				{$t('sql.format')}
+			</button>
+			<button
+				type="button"
+				class="sql-run-btn"
+				onclick={run}
+				disabled={pending || !sql.trim()}
+				title={$t('sql.run_tooltip')}
+				aria-label={$t('sql.run_aria')}
+			>
+				{#if pending}
+					<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+						<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="40" stroke-dashoffset="20">
+							<animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.9s" repeatCount="indefinite" />
+						</circle>
+					</svg>
+				{:else}
+					<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+						<path d="M8 5v14l11-7z" fill="currentColor" />
+					</svg>
+				{/if}
+			</button>
 		</div>
 	</header>
 
