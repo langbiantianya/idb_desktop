@@ -266,7 +266,7 @@ export const ru = {
 	'dg.help.desc': 'Описание',
 	'dg.help.var': 'Переменная',
 
-	'dg.help.insert.desc': 'Вставить строку в указанную таблицу. <code>tableName</code> — имя таблицы, <code>rowTable</code> — Lua table (ключи = имена столбцов, значения = значения столбцов). Каждый вызов немедленно выполняет INSERT и возвращает автоинкрементный ID. Значения столбцов поддерживают <code>string</code>/<code>number</code>/<code>boolean</code>/<code>nil</code>; <code>number</code> автоматически различает целое (Long) и дробное (Double)',
+	'dg.help.insert.desc': 'Вставить строку в указанную таблицу. <code>tableName</code> — имя таблицы, <code>rowTable</code> — Lua table (ключи = имена столбцов, значения = значения столбцов). Каждый вызов немедленно выполняет INSERT и возвращает автоинкрементный ID. Значения столбцов поддерживают <code>string</code>/<code>number</code>/<code>boolean</code>/<code>nil</code>/<code>LocalDate</code>/<code>LocalDateTime</code>/<code>LocalTime</code>; <code>number</code> автоматически различает целое (Long) и дробное (Double); объекты даты/времени привязываются через JDBC-типы <code>DATE</code>/<code>TIMESTAMP</code>/<code>TIME</code>',
 	'dg.help.lastid.desc': 'Получить значение автоинкрементного первичного ключа (BIGINT) от последней <code>insert()</code> в текущей таблице. Возвращает <code>nil</code>, если автоинкрементного столбца нет. Часто используется для ссылок дочерней таблицы на родительскую',
 
 	'dg.help.ri.params': 'Два целых числа',
@@ -278,9 +278,15 @@ export const ru = {
 	'dg.help.rs.params': 'Положительное целое',
 	'dg.help.rs.returns': 'Строка',
 	'dg.help.rs.desc': 'Случайная буквенно-цифровая строка указанной длины (a-zA-Z0-9)',
-	'dg.help.rd.params': 'Две строковые даты',
-	'dg.help.rd.returns': 'Строка',
-	'dg.help.rd.desc': 'Случайная дата в формате YYYY-MM-DD между двумя датами',
+	'dg.help.rd.params': 'Две строки даты YYYY-MM-DD',
+	'dg.help.rd.returns': 'Объект LocalDate',
+	'dg.help.rd.desc': 'Случайная дата в диапазоне. При вставке привязывается через JDBC-тип <code>DATE</code> (избегает ошибок PG <code>column is of type date but expression is of type character varying</code>)',
+	'dg.help.rdt.params': 'Две строки даты YYYY-MM-DD',
+	'dg.help.rdt.returns': 'Объект LocalDateTime',
+	'dg.help.rdt.desc': 'Случайная метка времени в диапазоне (секундная точность). При вставке привязывается через тип <code>TIMESTAMP</code>',
+	'dg.help.rt.params': 'Нет',
+	'dg.help.rt.returns': 'Объект LocalTime',
+	'dg.help.rt.desc': 'Случайное <code>HH:mm:ss</code>. При вставке привязывается через тип <code>TIME</code>',
 	'dg.help.re.params': 'Нет',
 	'dg.help.re.returns': 'Строка',
 	'dg.help.re.desc': 'Формат: <code>user_&lt;случайное_число&gt;@example.com</code>',
@@ -310,6 +316,9 @@ export const ru = {
 	'dg.help.ex5.desc': 'Цепочка внешних ключей: <code>users</code> → <code>orders</code> → <code>order_items</code>:',
 	'dg.help.ex6.title': 'Пример 6 — Использование возможностей Lua для генерации сложных данных',
 	'dg.help.ex6.desc': 'Использование библиотек <code>table</code>, <code>string</code>, <code>math</code> и управляющих конструкций Lua:',
+	'dg.help.ex7.title': 'Пример 7 — Столбцы даты/времени (столбцы PG date / timestamp)',
+	'dg.help.ex7.desc': '<code>random_date</code> возвращает <code>LocalDate</code>, <code>random_datetime</code> — <code>LocalDateTime</code>, <code>random_time</code> — <code>LocalTime</code>. Движок привязывает их к плейсхолдерам <code>?</code> через JDBC-типы <code>DATE</code> / <code>TIMESTAMP</code> / <code>TIME</code>, избегая ошибок PG <code>column "..." is of type date but expression is of type character varying</code>:',
+	'dg.help.ex7.tip': 'Если нужно склеить дату со строкой для не-временного столбца (например, <code>varchar</code> примечания), конкатенация <code>..</code> по-прежнему работает — <code>LocalDate.toString()</code> вызывается при склейке и возвращает ISO-строку.<br><br>Рекомендуется передавать объект <code>LocalDate</code> / <code>LocalDateTime</code> / <code>LocalTime</code> напрямую в столбцы времени, чтобы избежать побочных эффектов конкатенации <code>..</code> (часовой пояс / точность / дробные секунды).',
 
 	// ---- Роутины (Функции / Хранимые процедуры) ----
 	'routine.info': 'Основная информация',

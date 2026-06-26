@@ -266,7 +266,7 @@ export const ja = {
 	'dg.help.desc': '説明',
 	'dg.help.var': '変数',
 
-	'dg.help.insert.desc': '指定したテーブルに1行挿入します。<code>tableName</code> はテーブル名の文字列、<code>rowTable</code> は Lua table（キー=列名、値=列値）。呼び出しごとに即座に INSERT を実行し、自動採番 ID を返します。列値は <code>string</code>/<code>number</code>/<code>boolean</code>/<code>nil</code> をサポートし、<code>number</code> は整数（Long）と浮動小数点数（Double）を自動判別します',
+	'dg.help.insert.desc': '指定したテーブルに1行挿入します。<code>tableName</code> はテーブル名の文字列、<code>rowTable</code> は Lua table（キー=列名、値=列値）。呼び出しごとに即座に INSERT を実行し、自動採番 ID を返します。列値は <code>string</code>/<code>number</code>/<code>boolean</code>/<code>nil</code>/<code>LocalDate</code>/<code>LocalDateTime</code>/<code>LocalTime</code> をサポートし、<code>number</code> は整数（Long）と浮動小数点数（Double）を自動判別します。日付/時間オブジェクトは JDBC <code>DATE</code>/<code>TIMESTAMP</code>/<code>TIME</code> 型でバインドされます',
 	'dg.help.lastid.desc': '現在のテーブルで直近の <code>insert()</code> で生成された自動採番主キー値（BIGINT）を取得します。自動採番列がない場合は <code>nil</code> を返します。子テーブルから親テーブルの ID を参照する際によく使用されます',
 
 	'dg.help.ri.params': '2 つの整数',
@@ -278,9 +278,15 @@ export const ja = {
 	'dg.help.rs.params': '正の整数',
 	'dg.help.rs.returns': '文字列',
 	'dg.help.rs.desc': '指定長のランダム英数字列（a-zA-Z0-9）',
-	'dg.help.rd.params': '2 つの日付文字列',
-	'dg.help.rd.returns': '文字列',
-	'dg.help.rd.desc': 'YYYY-MM-DD 形式の2つの日付の間のランダム日付',
+	'dg.help.rd.params': '2 つの YYYY-MM-DD 日付文字列',
+	'dg.help.rd.returns': 'LocalDate オブジェクト',
+	'dg.help.rd.desc': '区間内のランダム日付。挿入時に JDBC <code>DATE</code> 型で自動バインドされ、PG の <code>column is of type date but expression is of type character varying</code> エラーを回避します',
+	'dg.help.rdt.params': '2 つの YYYY-MM-DD 日付文字列',
+	'dg.help.rdt.returns': 'LocalDateTime オブジェクト',
+	'dg.help.rdt.desc': '区間内のランダムタイムスタンプ（秒精度）。挿入時に <code>TIMESTAMP</code> 型で自動バインドされます',
+	'dg.help.rt.params': 'なし',
+	'dg.help.rt.returns': 'LocalTime オブジェクト',
+	'dg.help.rt.desc': 'ランダムな <code>HH:mm:ss</code>。挿入時に <code>TIME</code> 型でバインドされます',
 	'dg.help.re.params': 'なし',
 	'dg.help.re.returns': '文字列',
 	'dg.help.re.desc': '形式: <code>user_&lt;ランダム数字&gt;@example.com</code>',
@@ -310,6 +316,9 @@ export const ja = {
 	'dg.help.ex5.desc': '複数テーブルの外部キーチェーン: <code>users</code> → <code>orders</code> → <code>order_items</code>:',
 	'dg.help.ex6.title': '例 6 — Lua の言語機能を使って複雑なデータを生成',
 	'dg.help.ex6.desc': 'Lua の <code>table</code>、<code>string</code>、<code>math</code> ライブラリと制御フローを活用:',
+	'dg.help.ex7.title': '例 7 — 日付/時間型カラム（PG date / timestamp カラム）',
+	'dg.help.ex7.desc': '<code>random_date</code> は <code>LocalDate</code> を、<code>random_datetime</code> は <code>LocalDateTime</code> を、<code>random_time</code> は <code>LocalTime</code> を返します。エンジンはこれらを JDBC <code>DATE</code> / <code>TIMESTAMP</code> / <code>TIME</code> 型で <code>?</code> プレースホルダにバインドするため、PG の <code>column "..." is of type date but expression is of type character varying</code> エラーを回避できます:',
+	'dg.help.ex7.tip': '非時間型のカラム（例: <code>varchar</code> 備考）に日付文字列を連結したい場合、<code>..</code> 連結もそのまま使えます。連結時に <code>LocalDate.toString()</code> が呼ばれ、ISO 文字列になります。<br><br>時間関連のカラムには <code>LocalDate</code> / <code>LocalDateTime</code> / <code>LocalTime</code> オブジェクトを直接渡すことを推奨します（<code>..</code> 連結の副作用 — タイムゾーン/精度/小数秒 — を避けるため）。',
 
 	// ---- ルーティン（関数 / ストアドプロシージャ）----
 	'routine.info': '基本情報',

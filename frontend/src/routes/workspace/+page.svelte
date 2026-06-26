@@ -275,6 +275,59 @@
 		// 让侧栏列子节点（已展开的）重新拉
 		await sidebarRef?.refreshColumnsOf(database, schema, table);
 	}
+
+	/**
+	 * Routine 创建成功：刷新 sidebar 中的 routines 列表，
+	 * 并把当前新建 tab 切换为该 routine 的查看 tab。
+	 * @param {Tab} tab
+	 * @param {string} createdName
+	 */
+	async function onRoutineSaved(tab, createdName) {
+		const db = tab.database || '';
+		const schema = tab.schema;
+		const routineType = /** @type {'FUNCTION'|'PROCEDURE'|'TRIGGER'} */ (tab.routineType);
+		// 1) 刷新 sidebar，让新建的 routine 出现在列表里
+		await sidebarRef?.refreshRoutinesIn(db, schema);
+		if (!createdName) {
+			// 解析不出来 DDL 里的名字就保留当前新建 tab，让用户手动关闭
+			return;
+		}
+		// 2) 关闭当前新建 tab
+		const next = tabs.filter((t) => t.id !== tab.id);
+		// 3) 打开查看 tab（若已存在则复用，避免重复打开）
+		const viewId = `routine:${db}:${schema}:${createdName}`;
+		if (!next.find((t) => t.id === viewId)) {
+			next.push({
+				id: viewId,
+				database: db,
+				kind: 'routine',
+				schema,
+				name: createdName,
+				routineType,
+				title: createdName
+			});
+		}
+		tabs = next;
+		activeTabId = viewId;
+	}
+
+	/**
+	 * Routine 删除成功：关闭当前 tab，刷新 sidebar 中的 routines 列表。
+	 * @param {Tab} tab
+	 */
+	async function onRoutineDeleted(tab) {
+		const db = tab.database || '';
+		const schema = tab.schema;
+		// 1) 关闭当前 tab
+		const idx = tabs.findIndex((t) => t.id === tab.id);
+		const next = tabs.filter((t) => t.id !== tab.id);
+		tabs = next;
+		if (activeTabId === tab.id) {
+			activeTabId = next.length > 0 ? next[Math.max(0, idx - 1)].id : '';
+		}
+		// 2) 刷新 sidebar
+		await sidebarRef?.refreshRoutinesIn(db, schema);
+	}
 </script>
 
 <svelte:head>
@@ -459,7 +512,15 @@
 						{:else if tab.kind === 'routine'}
 							{@const sc = connFor(tab.database, tab.schema)}
 							{#if sc}
-								<FunctionPanel schemaConn={sc} name={tab.name} routineType={tab.routineType} schema={tab.schema} isNew={tab.isNew ?? false} />
+								<FunctionPanel
+									schemaConn={sc}
+									name={tab.name}
+									routineType={tab.routineType}
+									schema={tab.schema}
+									isNew={tab.isNew ?? false}
+									onSaved={(createdName) => onRoutineSaved(tab, createdName)}
+									onDeleted={() => onRoutineDeleted(tab)}
+								/>
 							{/if}
 						{:else if tab.kind === 'export'}
 							{@const sc = connFor(tab.database, tab.schema)}

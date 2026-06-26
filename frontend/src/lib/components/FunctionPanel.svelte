@@ -16,10 +16,12 @@
 	 * @property {'FUNCTION'|'PROCEDURE'|'TRIGGER'} routineType
 	 * @property {string} schema
 	 * @property {boolean} [isNew]
+	 * @property {(createdName: string) => void} [onSaved] — 创建/保存成功后通知父组件（用于刷新 sidebar 并切换 tab）
+	 * @property {() => void} [onDeleted] — 删除成功后通知父组件（用于关闭当前 tab）
 	 */
 
 	/** @type {Props} */
-	let { schemaConn, name, routineType, schema, isNew = false } = $props();
+	let { schemaConn, name, routineType, schema, isNew = false, onSaved, onDeleted } = $props();
 
 	// 模式：view | edit | new
 	// view: 查看详情，可编辑/调用/调试/删除
@@ -167,6 +169,17 @@
 		}
 	}
 
+	/**
+	 * 从 CREATE [OR REPLACE] {FUNCTION|PROCEDURE|TRIGGER} DDL 中解析出 routine 名。
+	 * 支持带反引号 / 双引号 / 不带引号的标识符；带 schema 前缀时返回最后的 simple name。
+	 * @param {string} ddl
+	 * @returns {string}
+	 */
+	function parseRoutineName(ddl) {
+		const m = /create\s+(?:or\s+replace\s+)?(?:function|procedure|trigger)\s+(?:if\s+not\s+exists\s+)?("?[^"(]+"?\.)?(?:"?([^"\s(]+)"?)/i.exec(ddl);
+		return m ? (m[2] || m[1].replace(/\.$/, '').replace(/"/g, '')) : '';
+	}
+
 	async function doSave() {
 		if (!editedBody.trim()) {
 			err(get(t)('routine.body_required'));
@@ -181,8 +194,12 @@
 				ok(get(t)('routine.save_success'));
 				hasChanges = false;
 				if (isNew) {
-					// 新建成功：刷新页面以让侧栏加载新函数
-					window.location.reload();
+					// 新建成功：解析 DDL 得到真实 routine 名，传给父组件。
+					// 父组件负责关闭当前新建 tab、打开查看 tab，并刷新 sidebar。
+					// 注意：不要用 window.location.reload()，
+					// 在 Wails 中会触发 http://wails.localhost/workspace 资源加载失败。
+					const createdName = parseRoutineName(editedBody);
+					onSaved?.(createdName);
 				} else {
 					mode = 'view';
 					await loadDetail();
@@ -253,8 +270,8 @@
 			if (resp.success) {
 				ok(get(t)('routine.deleted', { name }));
 				confirmingDelete = false;
-				// 触发页面刷新以关闭 tab
-				window.location.reload();
+				// 通知父组件关闭当前 tab 并刷新 sidebar 中的 routines 列表。
+				onDeleted?.();
 			} else {
 				err(resp.error ?? get(t)('routine.delete_failed'));
 			}

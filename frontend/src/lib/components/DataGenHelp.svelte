@@ -38,7 +38,9 @@
 				<tr><td><code>random_int(min, max)</code></td><td>{$t('dg.help.ri.params')}</td><td>{$t('dg.help.ri.returns')}</td><td>{$t('dg.help.ri.desc')}</td></tr>
 				<tr><td><code>random_float(min, max)</code></td><td>{$t('dg.help.rf.params')}</td><td>{$t('dg.help.rf.returns')}</td><td>{$t('dg.help.rf.desc')}</td></tr>
 				<tr><td><code>random_string(length)</code></td><td>{$t('dg.help.rs.params')}</td><td>{$t('dg.help.rs.returns')}</td><td>{$t('dg.help.rs.desc')}</td></tr>
-				<tr><td><code>random_date(start, end)</code></td><td>{$t('dg.help.rd.params')}</td><td>{$t('dg.help.rd.returns')}</td><td>{$t('dg.help.rd.desc')}</td></tr>
+				<tr><td><code>random_date(start, end)</code></td><td>{$t('dg.help.rd.params')}</td><td>{$t('dg.help.rd.returns')}</td><td>{@html $t('dg.help.rd.desc')}</td></tr>
+				<tr><td><code>random_datetime(start, end)</code></td><td>{$t('dg.help.rdt.params')}</td><td>{$t('dg.help.rdt.returns')}</td><td>{@html $t('dg.help.rdt.desc')}</td></tr>
+				<tr><td><code>random_time()</code></td><td>{$t('dg.help.rt.params')}</td><td>{$t('dg.help.rt.returns')}</td><td>{@html $t('dg.help.rt.desc')}</td></tr>
 				<tr><td><code>random_email()</code></td><td>{$t('dg.help.re.params')}</td><td>{$t('dg.help.re.returns')}</td><td>{@html $t('dg.help.re.desc')}</td></tr>
 				<tr><td><code>random_phone()</code></td><td>{$t('dg.help.rp.params')}</td><td>{$t('dg.help.rp.returns')}</td><td>{$t('dg.help.rp.desc')}</td></tr>
 				<tr><td><code>random_name()</code></td><td>{$t('dg.help.rn.params')}</td><td>{$t('dg.help.rn.returns')}</td><td>{$t('dg.help.rn.desc')}</td></tr>
@@ -76,6 +78,11 @@
 		<h4>{$t('dg.help.ex6.title')}</h4>
 		<p>{@html $t('dg.help.ex6.desc')}</p>
 		<pre><code>{"local statuses = {'pending', 'paid', 'shipped', 'completed', 'cancelled'}\nlocal weights = {10, 30, 25, 30, 5}  -- 权重分布\n\n-- 加权随机选择\nlocal function weighted_enum(values, weights)\n  local total = 0\n  for _, w in ipairs(weights) do total = total + w end\n  local r = random_int(1, total)\n  local acc = 0\n  for i, w in ipairs(weights) do\n    acc = acc + w\n    if r <= acc then return values[i] end\n  end\n  return values[#values]\nend\n\nfor i = 1, 1000 do\n  local amount = random_int(100, 999999) / 100.0\n\n  -- 大额订单更可能是 completed\n  local status\n  if amount > 5000 then\n    status = weighted_enum(statuses, {2, 20, 30, 45, 3})\n  else\n    status = weighted_enum(statuses, weights)\n  end\n\n  insert('orders', {\n    user_id = random_int(1, 50),\n    amount = amount,\n    discount = math.floor(amount * random_int(0, 30) / 100 * 100) / 100,\n    status = status,\n    remark = '订单 #' .. i .. ' - ' .. random_name() .. ' 的订单',\n    created_at = random_date('2024-01-01', '2025-06-01')\n  })\nend"}</code></pre>
+
+		<h4>{$t('dg.help.ex7.title')}</h4>
+		<p>{@html $t('dg.help.ex7.desc')}</p>
+		<pre><code>{"for i = 1, 100 do\n  insert('biz_user', {\n    username      = 'user_' .. i,\n    birthday      = random_date('1970-01-01', '2005-12-31'),         -- -> setDate\n    last_login_at = random_datetime('2024-01-01', '2026-06-30'),    -- -> setTimestamp\n    wake_up_at    = random_time(),                                  -- -> setTime\n  })\nend"}</code></pre>
+		<div class="dg-note">{@html $t('dg.help.ex7.tip')}</div>
 	</div>
 </Modal>
 

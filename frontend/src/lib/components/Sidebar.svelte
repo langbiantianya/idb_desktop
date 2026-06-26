@@ -560,6 +560,23 @@
 	}
 
 	/**
+	 * 强制刷新指定 schema 的函数/存储过程列表（清除缓存并按需重新拉取）。
+	 * @param {string} db
+	 * @param {string} schema
+	 */
+	export async function refreshRoutinesIn(db, schema) {
+		const key = sk(db, schema);
+		if (routinesBySchema[key]) {
+			const next = { ...routinesBySchema };
+			delete next[key];
+			routinesBySchema = next;
+		}
+		if (routinesExpanded[key]) {
+			await loadRoutines(db, schema);
+		}
+	}
+
+	/**
 	 * 强制刷新某张表的列子节点（仅当该子节点已经展开 / 已缓存时；否则跳过）。
 	 * @param {string} db
 	 * @param {string} schema
