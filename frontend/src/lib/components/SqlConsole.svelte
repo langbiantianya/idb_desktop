@@ -15,7 +15,7 @@
 	import { getCompletionItems } from '$lib/sqlCompletion.js';
 	import { format as formatSql } from 'sql-formatter';
 	import SqlEditor from './SqlEditor.svelte';
-	import ContextMenu from './ContextMenu.svelte';
+	import { ContextMenu } from '$lib/components/ui/index.js';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig

@@ -48,7 +48,6 @@ make build
 # 平台安装包
 make package-windows    # Windows NSIS
 make package-linux      # Linux tar.gz
-make package-all        # 双平台
 ```
 
 | 命令 | 说明 |
@@ -94,7 +93,19 @@ idb_desktop/
     └── src/
         ├── lib/api/                    # 引擎 API 层
         ├── lib/i18n/                   # 5 种语言
-        ├── lib/components/            # 22 个 Svelte 组件
+        ├── lib/components/            # Svelte 组件
+        │   ├── ui/                    # 可复用 UI 组件库
+        │   │   ├── button/            # MdButton - MD3 按钮
+        │   │   ├── dialog/            # Modal / ConfirmDialog
+        │   │   ├── feedback/          # ToastHost
+        │   │   ├── navigation/        # ThemeToggle
+        │   │   ├── menu/              # ContextMenu
+        │   │   └── input/             # Combobox
+        │   ├── ConnectionForm.svelte  # 连接管理
+        │   ├── Sidebar.svelte        # 数据库树形浏览器
+        │   ├── DataGrid.svelte       # 数据表格
+        │   ├── SqlConsole.svelte      # SQL 控制台
+        │   └── ...                    # 其他业务组件
         └── routes/
             ├── +page.svelte           # 连接选择
             ├── setup/                 # 首次引导

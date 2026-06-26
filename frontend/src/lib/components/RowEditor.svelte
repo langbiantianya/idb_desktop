@@ -1,6 +1,5 @@
 <script>
-	import Modal from './Modal.svelte';
-	import MdButton from './MdButton.svelte';
+	import { Modal, MdButton } from '$lib/components/ui/index.js';
 	import { t } from '$lib/i18n';
 	import {
 		temporalKind,

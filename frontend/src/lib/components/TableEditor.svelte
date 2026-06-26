@@ -3,9 +3,7 @@
 	import { ok, err } from '$lib/stores/toasts.js';
 	import { t } from '$lib/i18n';
 	import { get } from 'svelte/store';
-	import Modal from './Modal.svelte';
-	import MdButton from './MdButton.svelte';
-	import Combobox from './Combobox.svelte';
+	import { Modal, MdButton, Combobox } from '$lib/components/ui/index.js';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig

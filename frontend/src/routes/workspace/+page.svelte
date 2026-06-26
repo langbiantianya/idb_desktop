@@ -11,8 +11,7 @@
 	import FunctionPanel from '$lib/components/FunctionPanel.svelte';
 	import TablePanel from '$lib/components/TablePanel.svelte';
 	import TableEditor from '$lib/components/TableEditor.svelte';
-	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
-	import MdButton from '$lib/components/MdButton.svelte';
+	import { ThemeToggle, MdButton } from '$lib/components/ui/index.js';
 	import { t } from '$lib/i18n';
 	import { get } from 'svelte/store';
 	import { getSystemInfo } from '$lib/api';

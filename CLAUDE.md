@@ -64,8 +64,15 @@ idb_desktop/
 │   │   │   │   ├── en.js        # English
 │   │   │   │   ├── ja.js        # 日本語
 │   │   │   │   └── ru.js        # Русский
-│   │   │   ├── components/      # 22 个 Svelte 组件
-│   │   │   │   ├── MdButton.svelte         # MD3 通用按钮组件（6 种 variant × 3 种 size）
+│   │   │   ├── components/      # Svelte 组件
+│   │   │   │   ├── ui/                     # 可复用 UI 组件（已按功能分类）
+│   │   │   │   │   ├── index.js            # 统一导出
+│   │   │   │   │   ├── button/             # MdButton - MD3 通用按钮（6 种 variant × 3 种 size）
+│   │   │   │   │   ├── dialog/             # Modal / ConfirmDialog - 模态框 / 确认对话框
+│   │   │   │   │   ├── feedback/           # ToastHost - Toast 通知容器
+│   │   │   │   │   ├── navigation/         # ThemeToggle - 亮色/暗色/自动主题切换
+│   │   │   │   │   ├── menu/              # ContextMenu - 右键上下文菜单
+│   │   │   │   │   └── input/              # Combobox - 自动补全下拉输入
 │   │   │   │   ├── ConnectionForm.svelte  # 连接管理界面
 │   │   │   │   ├── Sidebar.svelte         # 数据库树形浏览器
 │   │   │   │   ├── DataGrid.svelte        # 数据表格（分页 + 全量流式加载 + 行 CRUD + 列内筛选 + 搜索 + 虚拟滚动）；header 双行：标题/工具栏（上）+ WHERE / ORDER BY（下，中间分割线）
@@ -82,12 +89,8 @@ idb_desktop/
 │   │   │   │   ├── TableEditor.svelte     # 新建表向导
 │   │   │   │   ├── RowEditor.svelte       # 行插入/编辑表单
 │   │   │   │   ├── FunctionPanel.svelte  # 函数/存储过程/触发器管理（查看/创建/编辑/删除/plpgsql补全/调用/调试）
-│   │   │   │   ├── Modal.svelte           # 通用模态框
-│   │   │   │   ├── ConfirmDialog.svelte   # 确认对话框
-│   │   │   │   ├── ContextMenu.svelte     # 右键上下文菜单
-│   │   │   │   ├── ThemeToggle.svelte     # 亮色/暗色/自动主题切换
-│   │   │   │   ├── ToastHost.svelte       # Toast 通知容器
-│   │   │   │   └── Combobox.svelte        # 自动补全下拉输入
+│   │   │   │   ├── TreeTableList.svelte  # 树形表列表组件
+│   │   │   │   └── settings/              # 设置页子组件
 │   │   │   ├── stores/          # Svelte 状态管理
 │   │   │   │   ├── appState.js  # 活跃连接状态
 │   │   │   │   ├── themeStore.js # 主题偏好 + 自定义主题注入 + 设置持久化（Go 后端）
@@ -579,11 +582,30 @@ DataGrid 和 SqlConsole 共享同一套虚拟滚动机制，实现类似 Android
 - **流式增量 UI**：SqlConsole 流式过程中每 100 行更新 `results` 触发 UI 刷新，用户可实时看到数据流入。
 - **tab 切换重置**：SqlConsole 切换结果 tab 时重置所有虚拟滚动状态。
 
-### 8.8 MdButton 通用按钮组件
+### 8.8 UI 组件库（ui/）
 
-[MdButton.svelte](frontend/src/lib/components/MdButton.svelte) 封装了 MD3 按钮规范，替代原 layout.css 中的全局 `@utility md-btn-*` 类。
+基础可复用 UI 组件统一位于 `src/lib/components/ui/`，通过 `index.js` 统一导出。
 
-**Props API**：
+**导入方式**：
+```svelte
+<script>
+  import { MdButton, Modal, ConfirmDialog, ToastHost, ThemeToggle, ContextMenu, Combobox } from '$lib/components/ui/index.js';
+</script>
+```
+
+**目录结构**：
+
+| 目录 | 组件 | 说明 |
+|------|------|------|
+| `button/` | `MdButton` | MD3 通用按钮（6 种 variant × 3 种 size） |
+| `dialog/` | `Modal`, `ConfirmDialog` | 模态框 / 确认对话框 |
+| `feedback/` | `ToastHost` | Toast 通知容器 |
+| `navigation/` | `ThemeToggle` | 亮色/暗色/自动主题切换 |
+| `menu/` | `ContextMenu` | 右键上下文菜单 |
+| `input/` | `Combobox` | 自动补全下拉输入 |
+
+#### MdButton Props API
+
 ```svelte
 <MdButton variant="filled" size="md" disabled={false} type="button" title="" onclick={fn}>
   按钮文本
@@ -607,7 +629,7 @@ DataGrid 和 SqlConsole 共享同一套虚拟滚动机制，实现类似 Android
 | `md` | 标准 | 0.8125rem | 2rem |
 | `lg` | 0.625rem 1.5rem | 1rem | 2.5rem |
 
-**6 种 variant**：`filled`（主要操作）、`tonal`（次要操作）、`outlined`（边框操作）、`text`（文本操作）、`danger`（危险操作）、`icon`（图标按钮）。样式已从 layout.css 全局类迁移至组件 scoped CSS。
+**6 种 variant**：`filled`（主要操作）、`tonal`（次要操作）、`outlined`（边框操作）、`text`（文本操作）、`danger`（危险操作）、`icon`（图标按钮）。
 
 **未迁移的按钮**：SqlConsole 的 `sql-tool-btn` / `sql-run-btn` / `result-tab`、Sidebar 的 `resize-handle`、ContextMenu 的 `context-menu-item`、ToastHost 的 `toast-close` 保留 scoped CSS，不使用 MdButton。
 
@@ -753,7 +775,6 @@ make dev               # 开发模式
 make build             # 当前平台构建
 make package-windows   # Windows NSIS 安装包
 make package-linux     # Linux tar.gz 分发包
-make package-all       # 全平台
 make jre-download      # 下载 Azul Zulu JRE 21
 make deps              # 依赖检查（go / node / npm / wails）
 make clean             # 清理构建产物

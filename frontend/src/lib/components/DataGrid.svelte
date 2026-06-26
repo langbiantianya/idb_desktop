@@ -15,12 +15,9 @@
 	import { get } from 'svelte/store';
 	import { isReadOnlySchema } from '$lib/readonly.js';
 	import { getWhereCompletionItems, getOrderByKeywords } from '$lib/sqlCompletion.js';
-	import ContextMenu from './ContextMenu.svelte';
-	import Modal from './Modal.svelte';
-	import ConfirmDialog from './ConfirmDialog.svelte';
+	import { ContextMenu, Modal, ConfirmDialog, MdButton } from '$lib/components/ui/index.js';
 	import RowEditor from './RowEditor.svelte';
 	import MonacoInput from './MonacoInput.svelte';
-	import MdButton from './MdButton.svelte';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig

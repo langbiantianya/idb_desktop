@@ -9,7 +9,7 @@
 	} from '$lib/stores/themeStore.js';
 	import { listThemes } from '$lib/api/themes.js';
 	import { t } from '$lib/i18n';
-	import ThemeToggle from '../ThemeToggle.svelte';
+	import { ThemeToggle } from '$lib/components/ui/index.js';
 
 	/** @type {import('$lib/api/themes.js').ThemeInfo[]} */
 	let themes = $state([]);

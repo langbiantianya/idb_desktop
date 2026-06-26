@@ -12,9 +12,7 @@
 	import { ok, err } from '$lib/stores/toasts.js';
 	import { t } from '$lib/i18n';
 	import { get } from 'svelte/store';
-	import Modal from './Modal.svelte';
-	import ConfirmDialog from './ConfirmDialog.svelte';
-	import MdButton from './MdButton.svelte';
+	import { Modal, ConfirmDialog, MdButton } from '$lib/components/ui/index.js';
 
 	// 系统 schema 集合，授权列表中过滤掉
 	const SYSTEM_SCHEMAS = new Set([

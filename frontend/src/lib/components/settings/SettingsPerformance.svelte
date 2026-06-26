@@ -10,7 +10,7 @@
 	import { t } from '$lib/i18n';
 	import { get } from 'svelte/store';
 	import { ok, err } from '$lib/stores/toasts.js';
-	import MdButton from '../MdButton.svelte';
+	import { MdButton } from '$lib/components/ui/index.js';
 
 	let restarting = $state(false);
 

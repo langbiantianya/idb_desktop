@@ -7,8 +7,7 @@
 		completeSetup
 	} from '$lib/stores/themeStore.js';
 	import { t, locale, setLocale, locales } from '$lib/i18n';
-	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
-	import MdButton from '$lib/components/MdButton.svelte';
+	import { ThemeToggle, MdButton } from '$lib/components/ui/index.js';
 
 	let step = $state(1); // 1=语言, 2=主题
 	// 临时语言选择（预览用，点击"下一步"时才持久化）

@@ -1,6 +1,6 @@
 <script>
 	import Modal from './Modal.svelte';
-	import MdButton from './MdButton.svelte';
+	import { MdButton } from '$lib/components/ui/button/index.js';
 	import { t } from '$lib/i18n';
 
 	/**

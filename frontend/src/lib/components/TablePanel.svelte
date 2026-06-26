@@ -5,11 +5,7 @@
 	import { isReadOnlySchema } from '$lib/readonly.js';
 	import { t } from '$lib/i18n';
 	import { get } from 'svelte/store';
-	import Modal from './Modal.svelte';
-	import ConfirmDialog from './ConfirmDialog.svelte';
-	import ContextMenu from './ContextMenu.svelte';
-	import MdButton from './MdButton.svelte';
-	import Combobox from './Combobox.svelte';
+	import { Modal, ConfirmDialog, ContextMenu, MdButton, Combobox } from '$lib/components/ui/index.js';
 
 	/**
 	 * 表结构编辑器：所有改动先落到本地 draft，点"保存"才统一推送到引擎。

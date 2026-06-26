@@ -17,11 +17,7 @@
 	import { untrack } from 'svelte';
 	import { t } from '$lib/i18n';
 	import { get } from 'svelte/store';
-	import Modal from './Modal.svelte';
-	import ConfirmDialog from './ConfirmDialog.svelte';
-	import ContextMenu from './ContextMenu.svelte';
-	import MdButton from './MdButton.svelte';
-	import Combobox from './Combobox.svelte';
+	import { Modal, ConfirmDialog, ContextMenu, MdButton, Combobox } from '$lib/components/ui/index.js';
 	import TreeTableList from './TreeTableList.svelte';
 
 	/**

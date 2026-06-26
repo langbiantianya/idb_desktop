@@ -7,7 +7,7 @@
 	let { onClose } = $props();
 
 	import { t } from '$lib/i18n';
-	import MdButton from './MdButton.svelte';
+	import { MdButton } from '$lib/components/ui/index.js';
 	import SettingsGeneral from './settings/SettingsGeneral.svelte';
 	import SettingsAppearance from './settings/SettingsAppearance.svelte';
 	import SettingsPerformance from './settings/SettingsPerformance.svelte';

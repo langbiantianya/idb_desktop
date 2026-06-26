@@ -5,9 +5,7 @@
 	import { get } from 'svelte/store';
 	import { format as formatSql } from 'sql-formatter';
 	import { getPlpgsqlCompletionItems } from '$lib/sqlCompletion.js';
-	import MdButton from './MdButton.svelte';
-	import Modal from './Modal.svelte';
-	import ConfirmDialog from './ConfirmDialog.svelte';
+	import { MdButton, Modal, ConfirmDialog } from '$lib/components/ui/index.js';
 	import SqlEditor from './SqlEditor.svelte';
 
 	/**

@@ -5,7 +5,7 @@
 	import { fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import favicon from '$lib/assets/favicon.svg';
-	import ToastHost from '$lib/components/ToastHost.svelte';
+	import { ToastHost } from '$lib/components/ui/feedback/index.js';
 	import SettingsPanel from '$lib/components/SettingsPanel.svelte';
 	import { initTheme, setupComplete, settingsLoaded } from '$lib/stores/themeStore.js';
 	import { showSettings, closeSettings } from '$lib/stores/overlayStore.js';

@@ -1,6 +1,6 @@
 <script>
 	import { t } from '$lib/i18n';
-	import MdButton from './MdButton.svelte';
+	import { MdButton } from '$lib/components/ui/index.js';
 
 	/**
 	 * @typedef {import('$lib/api').ConnectionConfig} ConnectionConfig
