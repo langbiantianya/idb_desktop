@@ -445,6 +445,10 @@
 					if (!endData || typeof endData !== 'object') return;
 					const data = endData.data;
 					if (!data) return;
+					// end=true 这一行也写进 SQL 日志（包含权威行数）
+					logBuf.push(JSON.stringify(data));
+					// 末行的 exportedRows 是权威值，覆盖流过程中的累加值
+					if (data.exportedRows !== undefined) exportedRows = data.exportedRows;
 					if (data.completed === true) {
 						logBuf.push(`\n✅ ${get(t)('export.completed', { rows: exportedRows })}`);
 					}
