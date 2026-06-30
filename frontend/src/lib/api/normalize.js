@@ -41,9 +41,12 @@ export function asTableList(data) {
 	return arr.map((item) => {
 		if (typeof item === 'string') return { name: item, type: 'TABLE' };
 		const o = /** @type {Record<string, unknown>} */ (item);
+		const rawType = String(o.type ?? 'TABLE');
+		// 统一映射：MySQL 返回 "BASE TABLE"，PostgreSQL 返回 "BASE TABLE" / "VIEW"
+		const type = rawType === 'BASE TABLE' ? 'TABLE' : rawType;
 		return {
 			name: String(o.name ?? o.tableName ?? ''),
-			type: String(o.type ?? 'TABLE')
+			type
 		};
 	});
 }

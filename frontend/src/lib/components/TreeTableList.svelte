@@ -125,37 +125,39 @@
 					class="text-[10px]"
 					style="color: var(--md-tertiary-container); filter: brightness(0.7);"
 				>
-					▦
+					{tbl.type === 'VIEW' ? '◈' : '▦'}
 				</span>
 				<span class="flex-1 truncate font-mono">{tbl.name}</span>
 				{#if tbl.type !== 'TABLE'}
 					<span class="md-chip">{tbl.type}</span>
 				{/if}
-				<MdButton
-					variant="icon"
-					class="opacity-0 group-hover/row:opacity-100"
-					style="width: 1.125rem; height: 1.125rem;"
-					title={$t('sidebar.modify_table')}
-					onclick={(e) => {
-						e.stopPropagation();
-						onInspectTable(schema, tbl.name);
-					}}
-				>
-					<span style="color: var(--md-on-surface-variant); font-size: 0.625rem;">⊞</span>
-				</MdButton>
-				{#if !readOnly}
+				{#if tbl.type !== 'VIEW'}
 					<MdButton
 						variant="icon"
 						class="opacity-0 group-hover/row:opacity-100"
 						style="width: 1.125rem; height: 1.125rem;"
-						title={$t('sidebar.delete_table')}
+						title={$t('sidebar.modify_table')}
 						onclick={(e) => {
 							e.stopPropagation();
-							onDeleteTable(schema, tbl.name);
+							onInspectTable(schema, tbl.name);
 						}}
 					>
-						<span style="color: var(--md-error); font-size: 0.625rem;">✕</span>
+						<span style="color: var(--md-on-surface-variant); font-size: 0.625rem;">⊞</span>
 					</MdButton>
+					{#if !readOnly}
+						<MdButton
+							variant="icon"
+							class="opacity-0 group-hover/row:opacity-100"
+							style="width: 1.125rem; height: 1.125rem;"
+							title={$t('sidebar.delete_table')}
+							onclick={(e) => {
+								e.stopPropagation();
+								onDeleteTable(schema, tbl.name);
+							}}
+						>
+							<span style="color: var(--md-error); font-size: 0.625rem;">✕</span>
+						</MdButton>
+					{/if}
 				{/if}
 			</div>
 
