@@ -164,17 +164,19 @@
 		class="flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 py-2"
 		style="background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant);"
 	>
-		<h2 class="shrink-0 text-sm font-medium" style="color: var(--md-on-surface);">{$t('dg.title')}</h2>
-		<button
-			type="button"
-			class="dg-help-btn"
-			onclick={() => (showHelp = true)}
-			title={$t('dg.help')}
-		>?</button>
-		<div class="flex min-w-0 flex-wrap items-center gap-3">
+		<div class="flex items-center gap-2">
+			<h2 class="shrink-0 text-sm font-medium" style="color: var(--md-on-surface);">{$t('dg.title')}</h2>
 			<div class="shrink-0 font-mono text-xs" style="color: var(--md-on-surface-variant);">
 				{schemaConn.driver}://{schemaConn.host}:{schemaConn.port}/{schemaConn.driver === 'Postgresql' ? (schemaConn._schema || schemaConn.database || '—') : (schemaConn.database || '—')}
 			</div>
+		</div>
+		<div class="flex min-w-0 flex-wrap items-center gap-3">
+			<button
+				type="button"
+				class="dg-help-btn"
+				onclick={() => (showHelp = true)}
+				title={$t('dg.help')}
+			>?</button>
 			<div class="flex items-center gap-1.5">
 				<span class="text-xs" style="color: var(--md-on-surface-variant);">{$t('dg.lua_version')}</span>
 				<select
@@ -191,7 +193,7 @@
 					<option value="5.5">Lua 5.5</option>
 				</select>
 			</div>
-						<button
+			<button
 				type="button"
 				class="dg-format-btn"
 				onclick={format}

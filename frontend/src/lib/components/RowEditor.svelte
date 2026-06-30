@@ -7,8 +7,10 @@
 		fractionalDigits,
 		stepFor,
 		dbToPickerValue,
-		pickerToDbValue
+		pickerToDbValue,
+		parseTzSuffix
 	} from '$lib/temporal.js';
+	import { DatePicker, TimePicker, DateTimePicker } from '$lib/components/ui/index.js';
 
 	/**
 	 * @typedef {import('$lib/api').ColumnMeta} ColumnMeta
@@ -42,6 +44,10 @@
 	/** @type {Record<string, string | null>} */
 	let drafts = $state({});
 
+	/** 带 TZ 类型列的原始时区后缀（'+08:00' 或 'Z'），提交时拼回 DB。
+	 *  在 $effect 中从 initial 抽取；与 drafts 同生命周期。 */
+	let tzSuffixes = $state(/** @type {Record<string, string>} */ ({}));
+
 	let metaByName = $derived.by(() => {
 		/** @type {Record<string, ColumnMeta>} */
 		const m = {};
@@ -53,6 +59,7 @@
 		if (!open) return;
 		const map = metaByName;
 		const next = /** @type {Record<string, string | null>} */ ({});
+		const tzNext = /** @type {Record<string, string>} */ ({});
 		for (const c of columns) {
 			const v = initial[c];
 			if (v === null || v === undefined) {
@@ -61,13 +68,21 @@
 			}
 			const meta = map[c];
 			const kind = temporalKind(meta?.type);
-			if (kind && !hasTimeZone(meta?.type)) {
-				next[c] = dbToPickerValue(v, kind, fractionalDigits(meta));
+			const tz = hasTimeZone(meta?.type);
+			if (kind && tz) {
+				// 带 TZ 类型：从 initial 抽取后缀，按本地时区显示
+				const s = String(v).trim();
+				const parsed = parseTzSuffix(s);
+				tzNext[c] = parsed ? parsed.raw : '';
+				next[c] = dbToPickerValue(s, meta);
+			} else if (kind) {
+				next[c] = dbToPickerValue(v, meta);
 			} else {
 				next[c] = String(v);
 			}
 		}
 		drafts = next;
+		tzSuffixes = tzNext;
 	});
 
 	function setNull(col) {
@@ -87,7 +102,7 @@
 		if (v === null) return null;
 		const meta = metaByName[col];
 		const kind = temporalKind(meta?.type);
-		if (kind && !hasTimeZone(meta?.type)) return pickerToDbValue(v, kind);
+		if (kind) return pickerToDbValue(v, meta, tzSuffixes[col] ?? '');
 		return v;
 	}
 
@@ -98,9 +113,13 @@
 			for (const c of columns) {
 				const before = initial[c];
 				const after = drafts[c];
-				const beforeRaw = before === null || before === undefined ? null : String(before);
+				// 把 before 也过一遍 pickerToDbValue，让比较两边都到 DB-shape
+				// DB 原值与 picker round-trip 都收敛到同一形态，防止 digits 截断、
+				// T/空格差异造成假 diff 触发多余 UPDATE。
+				const beforeRaw = before === null || before === undefined
+					? null
+					: toDbValue(c, dbToPickerValue(before, metaByName[c]));
 				const afterRaw = after === null ? null : toDbValue(c, after);
-				// 比较时拿 DB-shape 字符串：picker 把 '2024-01-01 12:00:00' 解析后会回到完全相同的字符串
 				if (afterRaw !== beforeRaw) changes[c] = afterRaw;
 			}
 			if (Object.keys(changes).length === 0) {
@@ -151,52 +170,47 @@
 							onclick={() => setNull(c)}
 						>
 							{$t('row.set_null')}
-						</MdButton>
-					</div>
-					{#if drafts[c] === null}
-						<button
-							type="button"
-							class="px-3 py-2 text-left italic"
-							style="border: 1px dashed var(--md-outline); border-radius: var(--md-radius-xs); color: var(--md-on-surface-variant); background: transparent;"
-							onclick={() => setText(c, '')}
-						>
-							{$t('row.null_hint')}
-						</button>
-					{:else if kind === 'date'}
-						<input
-							class="md-input font-mono text-sm"
-							type="date"
-							value={drafts[c]}
-							oninput={(e) => setText(c, e.currentTarget.value)}
-						/>
-					{:else if kind === 'time' && !tz}
-						<input
-							class="md-input font-mono text-sm"
-							type="time"
-							step={stepFor(digits)}
-							value={drafts[c]}
-							oninput={(e) => setText(c, e.currentTarget.value)}
-						/>
-					{:else if kind === 'datetime' && !tz}
-						<input
-							class="md-input font-mono text-sm"
-							type="datetime-local"
-							step={stepFor(digits)}
-							value={drafts[c]}
-							oninput={(e) => setText(c, e.currentTarget.value)}
-						/>
-					{:else}
-						<input
-							class="md-input font-mono text-sm"
-							type="text"
-							value={drafts[c]}
-							oninput={(e) => setText(c, e.currentTarget.value)}
-							placeholder={kind && tz ? $t('row.tz_hint') : ''}
-						/>
-					{/if}
-				</label>
-			{/each}
-		</div>
+							</MdButton>
+						</div>
+						{#if drafts[c] === null}
+							<button
+								type="button"
+								class="px-3 py-2 text-left italic"
+								style="border: 1px dashed var(--md-outline); border-radius: var(--md-radius-xs); color: var(--md-on-surface-variant); background: transparent;"
+								onclick={() => setText(c, '')}
+							>
+								{$t('row.null_hint')}
+							</button>
+						{:else if kind === 'date'}
+							<DatePicker
+								value={drafts[c] ?? ''}
+								size="sm"
+								onchange={(v) => setText(c, v)}
+							/>
+						{:else if kind === 'time'}
+							<TimePicker
+								value={drafts[c] ?? ''}
+								size="sm"
+								onchange={(v) => setText(c, v)}
+							/>
+						{:else if kind === 'datetime'}
+							<DateTimePicker
+								value={drafts[c] ?? ''}
+								size="sm"
+								onchange={(v) => setText(c, v)}
+							/>
+						{:else}
+							<input
+								class="md-input font-mono text-sm"
+								type="text"
+								value={drafts[c]}
+								oninput={(e) => setText(c, e.currentTarget.value)}
+								placeholder={kind && tz ? $t('row.tz_hint') : ''}
+							/>
+						{/if}
+					</label>
+				{/each}
+			</div>
 
 		<footer class="flex justify-end gap-2 pt-2">
 			<MdButton variant="text" type="button" onclick={onCancel} disabled={pending}>
